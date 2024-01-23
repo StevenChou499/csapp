@@ -165,7 +165,10 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  return 2;
+  // return 2;
+  // int result = ((x << 1) | 1) & ~(x >> 31);
+  // return !~result;
+  return !((x + 1) & x);
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -204,7 +207,7 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  return !((x + ~0x2F) >> 31 | ~(x + ~0x39) >> 31);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -214,7 +217,8 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  // return 2;
+  return (y ^ z) ^ ((!(x) + ~0) & y) ^ ((!!(x) + ~0) & z);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -224,7 +228,8 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  // return 2;
+  return !!((x + (~y)) >> 31);
 }
 //4
 /* 
@@ -236,7 +241,12 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  int mask_16 = x | (x << 16);
+  int mask_8 = mask_16 | (mask_16 << 8);
+  int mask_4 = mask_8 | (mask_8 << 4);
+  int mask_2 = mask_4 | (mask_4 << 2);
+  int mask_1 = mask_2 | (mask_2 << 1);
+  return (mask_1 >> 31) + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
