@@ -165,10 +165,8 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  // return 2;
-  // int result = ((x << 1) | 1) & ~(x >> 31);
-  // return !~result;
-  return !((x + 1) & x);
+  /* Tmax + 1 == 0x80000000, which means () */
+  return !~(((!~x) + ~0) & ((x + 1) ^ x));
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -207,6 +205,9 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
+  /* If x is an ascii digit, x minus 0x30 will give a non-negative result,
+   * at the same time, x minus 0x40 will give a negative result.
+   */
   return !((x + ~0x2F) >> 31 | ~(x + ~0x39) >> 31);
 }
 /* 
@@ -217,8 +218,11 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  // return 2;
-  return (y ^ z) ^ ((!(x) + ~0) & y) ^ ((!!(x) + ~0) & z);
+  /* By utilizing !(x) + ~0 makes 0xFFFFFFFF or 0x00000000,
+   * which will make (y ^ z) ^ 0 ^ z or (y ^ z) ^ y ^ 0, 
+   * returns only y or z.
+   */
+  return (y ^ z) ^ ((!(x) + ~0) & z) ^ ((!!(x) + ~0) & y);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -228,8 +232,14 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  // return 2;
-  return !!((x + (~y)) >> 31);
+  /* We first fit x_s and y_s all with x's and y's sign bit. Then
+   * we use (x_s ^ y_s) by check if x and y are the same sign. If 
+   * they are the same sign, just check the subtraction result sign 
+   * bit. If they are not the same sign, just check the x's sign bit.
+   */
+  int x_s = x >> 31;
+  int y_s = y >> 31;
+  return ~(((x_s ^ y_s) & (x_s)) | (~(x_s ^ y_s) & ((x + (~y)) >> 31))) + 1;
 }
 //4
 /* 
@@ -241,6 +251,11 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
+  /* By shifting half of the remaining bytes to the upper part and 
+   * implement bitwise and for 5 times (2^5 = 32), we can get the 
+   * bitwise and result of all the 32 bits. If mask_1 is 0 means all
+   * the bits are zeros.
+   */
   int mask_16 = x | (x << 16);
   int mask_8 = mask_16 | (mask_16 << 8);
   int mask_4 = mask_8 | (mask_8 << 4);
