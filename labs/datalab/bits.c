@@ -380,5 +380,22 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+  /* If x is zero then return 2.
+   * If x is larger than 127, adding bias 127 will be greater than 254, which 
+   * can't be represented by float.
+   * If x is smaller than -149, becase the smalled number float can represent 
+   * is 2 ^ -149, so float can't represent.
+   */
+  if (x == 0) // return float representation of 2.0
+    return 0x3f800000;
+  if (x > 127) // too big to represent, return +Inf
+    return 0x7F800000;
+  if (x < -149) // too small to represent, return 0
+    return 0;
+  if (x > -127) {// -127 < x < 0, normalized
+    return (x + 127) << 23;
+  }
+  else { // -149 < x <= -127, denormalized
+    return 0x00800000 >> (127 - x);
+  }
 }
