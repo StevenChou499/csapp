@@ -291,7 +291,27 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  /* If uf is Inf, Nan or 0, then directly return itsetlf.
+   * If the exp field is all 0s, mean it's a denormalized number,
+   * we only need to shift the exp and mantissa to the left by 1 bit.
+   * If uf is normalized number, we only need to add the exp by 1.
+   */
+  unsigned sign = uf & 0x80000000;
+  unsigned exp = uf & 0x7F800000;
+  unsigned mantissa = uf & 0x007FFFFF;
+  if (exp == 0x7F800000 || uf == 0x00000000) // Infinity or NaN or 0
+    return uf;
+  if (exp == 0x00000000) // denormalized
+  {
+    uf <<= 1;
+    uf = (uf & 0x7FFFFFFF) | sign;
+  }
+  else // normalized
+  {
+    exp = (((exp >> 23) + 1) << 23) & 0x7F800000;
+    uf = sign | exp | mantissa;
+  }
+  return uf;
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -306,7 +326,45 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  /* First check is the exp field is all zero or 1 then return 0 or
+   * 0x8000000u. Then we shift the exp field by 23 and minus by 150.
+   * We choose 150 is because when exp is 150, the represented floating
+   * point value will be same as the mantissa itself. By checking if the 
+   * exp is positive or negative, we shift the mantissa by left or right 
+   * untill exp is zero. If the shifted mantissa is already zero, mean the 
+   * result is already out of range (too many left shift) or too small for 
+   * integer to represent (too many right shift).
+   */
+  unsigned sign = uf & 0x80000000;
+  unsigned exp = uf & 0x7F800000;
+  int exp_s = uf & 0x7F800000;
+  unsigned mantissa = uf & 0x007FFFFF;
+  if (exp == 0x00000000) // uf is zero or denormalized
+    return 0;
+  if (exp == 0x7F800000) // uf is Inf, Nan
+    return 0x80000000u;
+  exp_s = exp_s >> 23;
+  exp_s -= 150; // 127 (bias) + 23 (mantissa bits) = 150
+  // The value of mantissa is now when exp is 23
+  mantissa |= 0x00800000;
+  if (exp_s > 0) {
+    while (exp_s--) { // left shift untill exp is zero
+      mantissa <<= 1;
+      if (mantissa == 0)
+        return 0x80000000u;
+    }
+  }
+  else {
+    while (exp_s++) { // right shift untill exp is zero
+      mantissa >>= 1;
+      if (mantissa == 0)
+        return 0;
+    }
+  }
+  if (sign)
+    return ~(mantissa) + 1;
+  else
+    return mantissa;
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
