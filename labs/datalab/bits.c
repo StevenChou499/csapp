@@ -276,7 +276,35 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+  int bits = 0;
+  int check_16;
+  int check_8;
+  int check_4;
+  int check_2;
+  int check_1;
+  int if_shift_and_add;
+  int diff = !((x ^ (x >> 1)) + ~0) & 1;
+  check_16 = (x ^ (x >> 16)) >> 16;
+  if_shift_and_add = (!check_16 + ~0) & 16;
+  x >>= if_shift_and_add;
+  bits += if_shift_and_add;
+  check_8 = (x ^ (x >> 8)) >> 8;
+  if_shift_and_add = (!check_8 + ~0) & 8;
+  x >>= if_shift_and_add;
+  bits += if_shift_and_add;
+  check_4 = (x ^ (x >> 4)) >> 4;
+  if_shift_and_add = (!check_4 + ~0) & 4;
+  x >>= if_shift_and_add;
+  bits += if_shift_and_add;
+  check_2 = (x ^ (x >> 2)) >> 2;
+  if_shift_and_add = (!check_2 + ~0) & 2;
+  x >>= if_shift_and_add;
+  bits += if_shift_and_add;
+  check_1 = (x ^ (x >> 1)) >> 1;
+  if_shift_and_add = (!check_1 + ~0) & 1;
+  x >>= if_shift_and_add;
+  bits += if_shift_and_add;
+  return bits + !!(bits) + 1 + diff;
 }
 //float
 /* 
