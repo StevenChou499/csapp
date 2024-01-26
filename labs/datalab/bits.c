@@ -276,6 +276,13 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
+  /* First check if the upper 16 bits of x is all the same, if they aren't the same 
+   * then shift x to the right by 16 bits and add varaible bits by 16. If they are 
+   * the same then don't do anything. Next we divide 16 by 2, which gets 8. we check 
+   * if the upper 8 bits of x is all the same and so on and so on. Untill we reached 
+   * for only 1 bit to check. There are two special case which is 0xFFFFFFFE and 
+   * 0x00000001, so we need to detect this case and add computed result by 1.
+   */
   int bits = 0;
   int check_16;
   int check_8;
