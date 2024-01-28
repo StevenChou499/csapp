@@ -165,7 +165,7 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  /* Tmax + 1 == 0x80000000, which means () */
+  /* Tmax + 1 == 0x80000000, which means Tmax ^ (Tmax + 1) = 0xFFFFFFFF */
   return !~(((!~x) + ~0) & ((x + 1) ^ x));
 }
 /* 
