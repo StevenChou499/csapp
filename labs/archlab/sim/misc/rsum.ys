@@ -1,0 +1,45 @@
+# Execution begins at address 0
+    .pos   0
+    irmovq stack, %rsp
+    call   main
+    halt
+
+# Sample linked list
+.align 8
+ele1:
+    .quad  0x00a
+    .quad  ele2
+ele2:
+    .quad  0x0b0
+    .quad  ele3
+ele3:
+    .quad  0xc00
+    .quad  0
+
+# The actual main function
+main:
+    irmovq ele1, %rdi
+    call   rsum_list
+    ret
+
+# long rsum_list(list_ptr ls)
+rsum_list:
+    irmovq $0, %rax
+    andq   %rdi, %rdi
+    jne    addr_valid
+    ret
+
+addr_valid:
+    mrmovq (%rdi), %rsi # store the current element
+    irmovq $8, %rdx
+    addq   %rdx, %rdi
+    mrmovq (%rdi), %rdi # calculate the next address
+    pushq  %rsi
+    call   rsum_list
+    popq   %rsi
+    addq   %rsi, %rax
+    ret
+
+# Stack starts here and grows to lower addresses
+    .pos   0x200
+stack:
