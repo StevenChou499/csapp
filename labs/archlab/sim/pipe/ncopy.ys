@@ -17,22 +17,118 @@ ncopy:
 # You can modify this portion
 	# Loop header
 	xorq %rax,%rax		# count = 0;
-	andq %rdx,%rdx		# len <= 0?
-	jle Done		# if so, goto Done:
+	# andq %rdx,%rdx		# len <= 0?
+	# jle Done		# if so, goto Done:
+	# jg Check_Boundary
+	# jmp Done
 
-Loop:	mrmovq (%rdi), %r10	# read val from src...
+Check_Boundary:
+	# Before loop unrolling, first chect the boundary
+	rrmovq %rdx, %r8
+	iaddq $-8, %r8
+	jg Loop            # If remain elem is more than 8, cont.
+    jmp Less_than8     # If less than 8 elements
+
+Loop:
+	mrmovq (%rdi), %r10	# read val from src... 1
+	iaddq $8, %rdi		# src++
 	rmmovq %r10, (%rsi)	# ...and store it to dst
 	andq %r10, %r10		# val <= 0?
-	jle Npos		# if so, goto Npos:
-	irmovq $1, %r10
-	addq %r10, %rax		# count++
-Npos:	irmovq $1, %r10
-	subq %r10, %rdx		# len--
-	irmovq $8, %r10
-	addq %r10, %rdi		# src++
-	addq %r10, %rsi		# dst++
+	jle Npos2	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos2:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 2
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos3	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos3:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 3
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos4	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos4:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 4
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos5	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos5:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 5
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos6	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos6:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 6
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos7	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos7:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 7
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos8	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos8:
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	mrmovq (%rdi), %r10	# read val from src... 8
+	iaddq $8, %rdi		# src++
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Npos	        # if so, goto Npos:
+	iaddq $1, %rax		# count++
+
+Npos:
+	iaddq $-8, %rdx		# len--
+	# iaddq $8, %rdi		# src++
+	iaddq $8, %rsi		# dst++
+	jg Check_Boundary			# if so, goto Loop:
+
+Less_than8:
+	mrmovq (%rdi), %r10	# read val from src...
+	iaddq $-1, %rdx     # len--
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10	# val <= 0?
+	jle Npos_8		# if so, goto Npos:
+	iaddq $1, %rax	# count++
+
+Npos_8:
+	# iaddq $-1, %rdx     # len--
+	iaddq $8, %rdi      # src++
+	iaddq $8, %rsi      # dst++
 	andq %rdx,%rdx		# len > 0?
-	jg Loop			# if so, goto Loop:
+	jg Less_than8			# if so, goto Loop:
+
+
 ##################################################################
 # Do not modify the following section of code
 # Function epilogue.
