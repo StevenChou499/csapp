@@ -23,7 +23,7 @@ VERSION=std
 # flags.
 
 CC=gcc
-CFLAGS=-Wall -O2
+CFLAGS=-Wall -O2 -fcommon
 
 ##################################################
 # You shouldn't need to modify anything below here
