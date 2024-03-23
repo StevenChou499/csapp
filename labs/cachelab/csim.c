@@ -49,6 +49,11 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    char str[30];
+
+    while (NULL != fgets(str, 30, fd)) {
+        printf("%s", str);
+    }
 
     cache_destroy(&L1);
 
