@@ -29,6 +29,12 @@ typedef struct _TIO {
     uint64_t Offset;
 } TIO;
 
+typedef struct _hme {
+    uint32_t hit;
+    uint32_t miss;
+    uint32_t evict;
+} hme;
+
 // Cache initialization with specific sets, entries and block size
 void cache_init(cache *c, uint32_t set, uint32_t entr, uint32_t block_size);
 
@@ -39,13 +45,13 @@ void cache_destroy(cache *c);
 void TIO_breakdown(TIO *t, uint64_t address, cache *c);
 
 // parsing the data operation on the cache
-void parse_data_op(cache *c, char *op);
+void parse_data_op(cache *c, char *op, hme *h);
 
 // update the cache information from the corresponding operation
-void cache_update(cache *c, TIO *t);
+void cache_update(cache *c, TIO *t, hme *h);
 
 // When cache miss, choose victim cache line by LRU replacement policy
-cache_entries *choose_victim(cache *c);
+cache_entries *choose_victim(cache *c, TIO *t, hme *h);
 
 int main(int argc, char* argv[])
 {
@@ -59,7 +65,7 @@ int main(int argc, char* argv[])
 
     printf("There are %u sets, each set have %u entry"
            ", each entry have a block size of %u bytes.\n"
-           , set, entry, block);
+           , (uint32_t) pow(2, set), entry, (uint32_t) pow(2, block));
     
     cache L1;
     cache_init(&L1, set, entry, block);
@@ -71,38 +77,33 @@ int main(int argc, char* argv[])
     }
 
     char str[30];
+    hme result = {0, 0, 0};
 
     while (NULL != fgets(str, 30, fd)) {
         printf("%s", str);
-        parse_data_op(&L1, str);
+        parse_data_op(&L1, str, &result);
     }
 
     cache_destroy(&L1);
 
-    // printSummary(0, 0, 0);
+    printSummary(result.hit, result.miss, result.evict);
     return 0;
 }
 
 void cache_init(cache *c, uint32_t set, uint32_t entry, uint32_t block_size)
 {
-    c->s = set;
+    c->s = pow(2, set);
     c->e = entry;
-    c->b = block_size;
-    c->sets = malloc(sizeof(cache_sets) * set);
-    for (uint32_t i = 0U; i < set; i++) {
+    c->b = pow(2, block_size);
+    c->sets = malloc(sizeof(cache_sets) * c->s);
+    for (uint32_t i = 0U; i < c->s; i++) {
         c->sets[i].entries =  calloc(entry, sizeof(cache_entries));
-        // for (uint32_t j = 0U; j < entry; j++) {
-        //     c->sets[i].entries[j].block = malloc(sizeof(uint8_t) * block_size);
-        // }
     }
 }
 
 void cache_destroy(cache *c)
 {
     for (uint32_t i = 0U; i < c->s; i++) {
-        // for (uint32_t j = 0U; j < c->e; j++) {
-        //     free(c->sets[i].entries[j].block);
-        // }
         free(c->sets[i].entries);
     }
     free(c->sets);
@@ -112,29 +113,21 @@ void TIO_breakdown(TIO *t, uint64_t address, cache *c)
 {
     uint32_t index_bits = (uint32_t) log2(c->s);
     uint32_t offset_bits = (uint32_t) log2(c->b);
-    uint32_t tag_bits = (uint32_t) (64U - index_bits - offset_bits);
     uint64_t offset_mask = (1UL << offset_bits) - 1UL;
     uint64_t index_mask = ((1UL << index_bits) - 1UL) << offset_bits;
     uint64_t tag_mask = 0xFFFFFFFFFFFFFFFFUL ^ (offset_mask | index_mask);
+
     t->Offset = address & offset_mask;
     t->Index = (address & index_mask) >> offset_bits;
     t->Tag = (address & tag_mask) >> (index_bits + offset_bits);
-    printf("For address 0x%lx\n", address);
-    printf("There are %u tag bits, %u index bits, %u offset bits\n", tag_bits, index_bits, offset_bits);
-    printf("The tag bit is 0x%lx\n", t->Tag);
-    printf("The index bit is 0x%lx\n", t->Index);
-    printf("The offset bit is 0x%lx\n", t->Offset);
-    printf("\n");
 }
 
-void parse_data_op(cache *c, char *op)
+void parse_data_op(cache *c, char *op, hme *h)
 {
     char operation = op[1]; // store L, M or S
     char *addr_str = op + 3; // The pointer storing the operation address
     strtok(addr_str, ",");
     uint64_t addr_hex = strtol(addr_str, NULL, 16);
-    // printf("%s\n", addr_str);
-    // printf("%lx\n", addr_hex);
 
     switch (operation) {
         case 'L':
@@ -144,28 +137,67 @@ void parse_data_op(cache *c, char *op)
             printf("This is a modify instruction\n");
             break;
         case 'S':
-            printf("This is a store instruction");
+            printf("This is a store instruction\n");
             break;
         default:
-            printf("Unknown instruction!");
+            printf("Unknown instruction! Skip it\n");
+            return;
     }
 
     TIO t;
     TIO_breakdown(&t, addr_hex, c);
 
+    if (operation == 'M')
+        cache_update(c, &t, h);
+    cache_update(c, &t, h);
+    printf("\n");
+
 }
 
-void cache_update(cache *c, TIO *t)
+void cache_update(cache *c, TIO *t, hme *h)
 {
-    uint8_t match_flag = 0U;
+    uint8_t hit_flag = 0U;
+    cache_entries *chosen_line;
     for (uint32_t i = 0U; i < c->e; i++) {
         if ((c->sets[t->Index].entries[i].tag == t->Tag) 
-        && (c->sets[t->Index].entries[i].valid = 1U)) // cache hit
-            match_flag = 1U;
+        && (c->sets[t->Index].entries[i].valid == 1U)) { // cache hit
+            chosen_line = &c->sets[t->Index].entries[i];
+            hit_flag = 1U;
+            h->hit += 1U;
+            printf("Hit ");
+        }
     }
-    if (match_flag == 1U) // cache hit, return immediately
-        return;
-    else { // cache miss, need to update cache
-        for ()
+    
+    if (hit_flag == 0U) { // cache miss, need to update cache
+        chosen_line = choose_victim(c, t, h);
+        chosen_line->tag = t->Tag;
+        chosen_line->valid = 1U;
     }
+
+    for (uint32_t i = 0U; i < c->e; i++)
+        c->sets[t->Index].entries[i].priority += 1U;
+    chosen_line->priority = 0U;
+}
+
+cache_entries *choose_victim(cache *c, TIO *t, hme *h)
+{
+    for (uint32_t i = 0U; i < c->e; i++)
+        if (c->sets[t->Index].entries[i].valid == 0U) { // if have non-valid, choose that
+            h->miss += 1U;
+            printf("Miss ");
+            return &c->sets[t->Index].entries[i];
+        }
+    
+    // If all the entries are valid, choose the least recently used
+    uint32_t oldest_priority = 0U, oldest_entry = 0U;
+    for (uint32_t i = 0U; i < c->e; i++) {
+        if (c->sets[t->Index].entries[i].priority > oldest_priority) {
+            oldest_priority = c->sets[t->Index].entries[i].priority;
+            oldest_entry = i;
+        }
+    }
+    printf("Evict ");
+    h->miss += 1U;
+    h->evict += 1U;
+    return &c->sets[t->Index].entries[oldest_entry];
 }
