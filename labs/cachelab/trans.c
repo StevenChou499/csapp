@@ -22,12 +22,62 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    int stride;
+    if (N <= 64 && M <= 64)
+        stride = 8;
+    else
+        stride = 16;
+    int i, j, tmp;
+    N -= stride;
+    M -= stride;
+
+    for (i = 0; i < N; i += stride) {
+        int k, h;
+        for (j = 0; j < M; j += stride) {
+            for (k = i; k < i + stride; k++) {
+                for (h = j; h < j + stride; h++) {
+                    // printf("k = %d, h = %d\n", k, h);
+                    tmp = A[k][h];
+                    B[h][k] = tmp;
+                }
+            }
+            // tmp = A[i][j];
+            // B[j][i] = tmp;
+        }
+        for (k = i; k < i + stride; k++) {
+            for (h = j; h < M + stride; h++) {
+                // printf("k = %d, h = %d\n", k, h);
+                tmp = A[k][h];
+                B[h][k] = tmp;
+            }
+        }
+    }
+    for (; i < N + stride; i++) {
+        for (j = 0; j < M + stride; j++) {
+            tmp = A[i][j];
+            B[j][i] = tmp;
+        }
+    }
+
 }
 
 /* 
  * You can define additional transpose functions below. We've defined
  * a simple one below to help you get started. 
  */ 
+
+char trans_col_desc[] = "Simple column-wise scan transpose";
+void col_trans(int M, int N, int A[N][M], int B[M][N])
+{
+    int i, j, tmp;
+
+    for (j = 0; j < M; j++) {
+        for (i = 0; i < N; i++) {
+            tmp = A[i][j];
+            B[j][i] = tmp;
+        }
+    }    
+}
 
 /* 
  * trans - A simple baseline transpose function, not optimized for the cache.
@@ -60,6 +110,7 @@ void registerFunctions()
 
     /* Register any additional transpose functions */
     registerTransFunction(trans, trans_desc); 
+    registerTransFunction(col_trans, trans_col_desc);
 
 }
 
