@@ -22,11 +22,54 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
-    int stride;
-    if (N <= 64 && M <= 64)
-        stride = 8;
-    else
-        stride = 16;
+
+    if (M == 32 && N == 32) {
+        int a, b, c, d, e, f, g, h;
+        for (int i = 0; i < N; i += 8) {
+            for (int j = 0; j < M; j += 8) {
+                for (int ii = i; ii < i + 8; ++ii) {
+                    a = A[ii][j];
+                    b = A[ii][j + 1];
+                    c = A[ii][j + 2];
+                    d = A[ii][j + 3];
+                    e = A[ii][j + 4];
+                    f = A[ii][j + 5];
+                    g = A[ii][j + 6];
+                    h = A[ii][j + 7];
+
+                    B[j][ii] = a;
+                    B[j + 1][ii] = b;
+                    B[j + 2][ii] = c;
+                    B[j + 3][ii] = d;
+                    B[j + 4][ii] = e;
+                    B[j + 5][ii] = f;
+                    B[j + 6][ii] = g;
+                    B[j + 7][ii] = h;
+                }
+            }
+        }
+        return;
+    }
+    else if (M == 64 && N == 64) {
+        int a, b, c, d;
+        for (int i = 0; i < N; i += 4) {
+            for (int j = 0; j < M; j += 4) {
+                for (int ii = i; ii < i + 4; ++ii) {
+                    a = A[ii][j];
+                    b = A[ii][j + 1];
+                    c = A[ii][j + 2];
+                    d = A[ii][j + 3];
+
+                    B[j][ii] = a;
+                    B[j + 1][ii] = b;
+                    B[j + 2][ii] = c;
+                    B[j + 3][ii] = d;
+                }
+            }
+        }
+        return;
+    }
+    int stride = 16;
     int i, j, tmp;
     N -= stride;
     M -= stride;
@@ -36,17 +79,13 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
         for (j = 0; j < M; j += stride) {
             for (k = i; k < i + stride; k++) {
                 for (h = j; h < j + stride; h++) {
-                    // printf("k = %d, h = %d\n", k, h);
                     tmp = A[k][h];
                     B[h][k] = tmp;
                 }
             }
-            // tmp = A[i][j];
-            // B[j][i] = tmp;
         }
         for (k = i; k < i + stride; k++) {
             for (h = j; h < M + stride; h++) {
-                // printf("k = %d, h = %d\n", k, h);
                 tmp = A[k][h];
                 B[h][k] = tmp;
             }
