@@ -169,6 +169,7 @@ void eval(char *cmdline)
     char buf[MAXLINE];    /* Holds modified command line */
     int bg;               /* Should the job run in bg or fg? */
     pid_t pid;            /* Process ID */
+    sigset_t mask, prev_mask;
 
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
@@ -177,6 +178,9 @@ void eval(char *cmdline)
         return;    /* Ignore empty lines */
 
     if (!builtin_cmd(argv)) {
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGCHLD);
+        sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         if ((pid = fork()) == 0) { /* Child process*/
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
@@ -186,11 +190,16 @@ void eval(char *cmdline)
 
         /* Parent waits for forground job to terminate */
         if (!bg) {
+            addjob(jobs, pid, FG, cmdline);
             waitfg(pid);
         }
         else {
-            printf("%d %s", pid, cmdline);
+            addjob(jobs, pid, BG, cmdline);
+            struct job_t *bg_job = getjobpid(jobs, pid);
+            printf("[%d] (%d) %s", bg_job->jid, pid, cmdline);
         }
+
+        sigprocmask(SIG_SETMASK, &prev_mask, NULL);
         
     }
     return;
@@ -261,11 +270,12 @@ int builtin_cmd(char **argv)
 {
     if (!strcmp(argv[0], "quit"))
         exit(0);
-    if (!strcmp(argv[0], "fg")) {
+    if (!strcmp(argv[0], "fg") || !strcmp(argv[0], "bg")) {
         do_bgfg(argv);
         return 1;
     }
     if (!strcmp(argv[0], "jobs")) {
+        listjobs(jobs);
         return 1;
     }
 
@@ -277,6 +287,23 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    pid_t pid;
+    int jid;
+    struct job_t *selected_job;
+    char *id = argv[1];
+    if (*id == '%') { // command uses job id
+        jid = atoi(id + 1);
+        selected_job = getjobjid(jobs, jid);
+    }
+    else {
+        pid = atoi(id);
+        selected_job = getjobpid(jobs, pid);
+    }
+    if (!strcmp(argv[0], "fg")) { // foreground job
+        kill(selected_job->pid, SIGCONT);
+    } else { // background job
+        kill(selected_job->pid, SIGTSTP);
+    }
     return;
 }
 
@@ -286,6 +313,7 @@ void do_bgfg(char **argv)
 void waitfg(pid_t pid)
 {
     waitpid(pid, NULL, 0);
+    deletejob(jobs, pid);
     return;
 }
 
@@ -302,6 +330,9 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+    pid_t pid = wait(NULL);
+    struct job_t *reaped = getjobpid(jobs, pid);
+    printf("Job [%d] (%d) terminated by signal %d\n", reaped->jid, pid, sig);
     return;
 }
 
