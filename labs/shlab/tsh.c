@@ -302,7 +302,7 @@ void do_bgfg(char **argv)
     if (!strcmp(argv[0], "fg")) { // foreground job
         kill(selected_job->pid, SIGCONT);
     } else { // background job
-        kill(selected_job->pid, SIGTSTP);
+        kill(selected_job->pid, SIGCONT);
     }
     return;
 }
@@ -330,9 +330,9 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    pid_t pid = wait(NULL);
-    struct job_t *reaped = getjobpid(jobs, pid);
-    printf("Job [%d] (%d) terminated by signal %d\n", reaped->jid, pid, sig);
+    // pid_t pid = wait(NULL);
+    // struct job_t *reaped = getjobpid(jobs, pid);
+    // printf("Job [%d] (%d) terminated by signal %d\n", reaped->jid, pid, sig);
     return;
 }
 
@@ -343,6 +343,11 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    // printf("sigint caught!\n");
+    for (int i = 0; i < MAXJOBS; i++) {
+        if (jobs[i].state == FG)
+            kill(jobs[i].pid, SIGINT);
+    }
     return;
 }
 
