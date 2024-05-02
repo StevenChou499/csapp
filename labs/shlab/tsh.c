@@ -169,25 +169,28 @@ void eval(char *cmdline)
     char buf[MAXLINE];    /* Holds modified command line */
     int bg;               /* Should the job run in bg or fg? */
     pid_t pid;            /* Process ID */
-    sigset_t mask, prev_mask;
+    sigset_t mask_all, mask, prev_mask;
 
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
+    sigfillset(&mask_all);
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
 
     if (argv[0] == NULL)
         return;    /* Ignore empty lines */
 
     if (!builtin_cmd(argv)) {
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGCHLD);
         sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         if ((pid = fork()) == 0) { /* Child process*/
+            sigprocmask(SIG_SETMASK, &prev_mask, NULL);
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
             }
         }
 
+        sigprocmask(SIG_BLOCK, &mask_all, NULL);
         /* Parent waits for forground job to terminate */
         if (!bg) {
             addjob(jobs, pid, FG, cmdline);
@@ -198,7 +201,6 @@ void eval(char *cmdline)
             struct job_t *bg_job = getjobpid(jobs, pid);
             printf("[%d] (%d) %s", bg_job->jid, pid, cmdline);
         }
-
         sigprocmask(SIG_SETMASK, &prev_mask, NULL);
         
     }
@@ -333,6 +335,19 @@ void sigchld_handler(int sig)
     // pid_t pid = wait(NULL);
     // struct job_t *reaped = getjobpid(jobs, pid);
     // printf("Job [%d] (%d) terminated by signal %d\n", reaped->jid, pid, sig);
+    sigset_t mask_all, prev_mask;
+    pid_t pid;
+    int status;
+    int old_errno = errno;
+    sigfillset(&mask_all);
+    while ((pid = waitpid(-1, &status, 0)) > 0) {
+        sigprocmask(SIG_SETMASK, &mask_all, &prev_mask);
+        deletejob(jobs, pid);
+        sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+    }
+    if (errno != ECHILD)
+        unix_error("waitpid fault!\n");
+    errno = old_errno;
     return;
 }
 
