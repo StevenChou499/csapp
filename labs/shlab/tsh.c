@@ -177,13 +177,20 @@ void eval(char *cmdline)
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
 
+    // struct sigaction act;
+    // // act.sa_handler = sigchld_handler;
+    // act.sa_handler = sigtstp_handler;
+    // sigemptyset(&act.sa_mask);
+    // act.sa_flags = SA_RESTART;
+    // sigaction(SIGCHLD, &act, NULL);
+
     if (argv[0] == NULL)
         return;    /* Ignore empty lines */
 
     if (!builtin_cmd(argv)) {
         sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         if ((pid = fork()) == 0) { /* Child process*/
-            sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+            sigprocmask(SIG_UNBLOCK, &mask, NULL);
             if (bg) {
                 setpgid(getpid(), 0);
             }
@@ -319,9 +326,10 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    while (getjobpid(jobs, pid));
-    // waitpid(pid, NULL, 0);
-    // deletejob(jobs, pid);
+    struct job_t *job;
+    while ((job = getjobpid(jobs, pid)) != NULL) {
+        sleep(1);
+    }
     return;
 }
 
@@ -343,13 +351,13 @@ void sigchld_handler(int sig)
     int status;
     int old_errno = errno;
     sigfillset(&mask_all);
-    while ((pid = waitpid(-1, &status, 0)) > 0) {
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
         sigprocmask(SIG_SETMASK, &mask_all, &prev_mask);
         deletejob(jobs, pid);
         sigprocmask(SIG_SETMASK, &prev_mask, NULL);
     }
-    if (errno != ECHILD)
-        unix_error("waitpid fault!\n");
+    // if (errno != ECHILD)
+    //     unix_error("waitpid fault!");
     errno = old_errno;
     return;
 }
@@ -371,6 +379,11 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+    pid_t pid = fgpid(jobs);
+    if (pid > 0) {
+        struct job_t *fgjob = getjobpid(jobs, pid);
+        fgjob->state = ST;
+    }
     return;
 }
 
