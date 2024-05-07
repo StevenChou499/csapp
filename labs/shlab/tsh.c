@@ -178,8 +178,8 @@ void eval(char *cmdline)
     sigaddset(&mask, SIGCHLD);
 
     // struct sigaction act;
-    // // act.sa_handler = sigchld_handler;
-    // act.sa_handler = sigtstp_handler;
+    // act.sa_handler = sigchld_handler;
+    // // act.sa_handler = sigtstp_handler;
     // sigemptyset(&act.sa_mask);
     // act.sa_flags = SA_RESTART;
     // sigaction(SIGCHLD, &act, NULL);
@@ -191,9 +191,7 @@ void eval(char *cmdline)
         sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         if ((pid = fork()) == 0) { /* Child process*/
             sigprocmask(SIG_UNBLOCK, &mask, NULL);
-            if (bg) {
-                setpgid(getpid(), 0);
-            }
+            setpgid(0, 0);
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
@@ -305,18 +303,50 @@ void do_bgfg(char **argv)
     int jid;
     struct job_t *selected_job;
     char *id = argv[1];
-    if (*id == '%') { // command uses job id
+    int fg = !strcmp(argv[0], "fg");
+    int use_jid;
+
+    if (argv[1] == NULL) {
+        printf("%s command requires PID or %%jobid argument\n", fg ? "fg" : "bg");
+        return;
+    }
+
+    if (*id == '%') {
+        use_jid = 1;
         jid = atoi(id + 1);
         selected_job = getjobjid(jobs, jid);
     }
-    else {
+    else if ((*id > '0') && (*id <= '9')) {
+        use_jid = 0;
         pid = atoi(id);
         selected_job = getjobpid(jobs, pid);
     }
+    else {
+        printf("%s: argument must be a PID or %%jobid\n", fg ? "fg" : "bg");
+        return;
+    }
+
+    if (selected_job == NULL) {
+        printf("(%d): No such process\n", use_jid ? jid : pid);
+    }
+
+
+    // if (*id == '%') { // command uses job id
+    //     jid = atoi(id + 1);
+    //     selected_job = getjobjid(jobs, jid);
+    // }
+    // else {
+    //     pid = atoi(id);
+    //     selected_job = getjobpid(jobs, pid);
+    // }
     if (!strcmp(argv[0], "fg")) { // foreground job
         kill(selected_job->pid, SIGCONT);
+        selected_job->state = FG;
+        waitfg(selected_job->pid);
     } else { // background job
         kill(selected_job->pid, SIGCONT);
+        printf("[%d] (%d) %s", selected_job->jid, selected_job->pid, selected_job->cmdline);
+        selected_job->state = BG;
     }
     return;
 }
@@ -328,6 +358,8 @@ void waitfg(pid_t pid)
 {
     struct job_t *job;
     while ((job = getjobpid(jobs, pid)) != NULL) {
+        if (job->state != FG)
+            break;
         sleep(1);
     }
     return;
@@ -352,9 +384,23 @@ void sigchld_handler(int sig)
     int old_errno = errno;
     sigfillset(&mask_all);
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-        sigprocmask(SIG_SETMASK, &mask_all, &prev_mask);
-        deletejob(jobs, pid);
-        sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+        if (WIFSTOPPED(status)) {
+            struct job_t *job = getjobpid(jobs, pid);
+            printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, WSTOPSIG(status));
+        }
+        else if (WIFSIGNALED(status)) {
+            struct job_t *job = getjobpid(jobs, pid);
+            printf("Job [%d] (%d) terminated by signal %d\n", job->jid, pid, WTERMSIG(status));
+            sigprocmask(SIG_SETMASK, &mask_all, &prev_mask);
+            deletejob(jobs, pid);
+            sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+        }
+        else if (WIFEXITED(status)) {
+            sigprocmask(SIG_SETMASK, &mask_all, &prev_mask);
+            deletejob(jobs, pid);
+            sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+        }
+        
     }
     // if (errno != ECHILD)
     //     unix_error("waitpid fault!");
@@ -369,6 +415,10 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    pid_t pid = fgpid(jobs);
+    if (pid > 0) {
+        kill(pid, SIGINT);
+    }
     return;
 }
 
@@ -383,6 +433,8 @@ void sigtstp_handler(int sig)
     if (pid > 0) {
         struct job_t *fgjob = getjobpid(jobs, pid);
         fgjob->state = ST;
+        kill(pid, SIGTSTP);
+        pause();
     }
     return;
 }
