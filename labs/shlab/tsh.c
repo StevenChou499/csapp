@@ -177,13 +177,6 @@ void eval(char *cmdline)
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
 
-    // struct sigaction act;
-    // act.sa_handler = sigchld_handler;
-    // // act.sa_handler = sigtstp_handler;
-    // sigemptyset(&act.sa_mask);
-    // act.sa_flags = SA_RESTART;
-    // sigaction(SIGCHLD, &act, NULL);
-
     if (argv[0] == NULL)
         return;    /* Ignore empty lines */
 
@@ -211,7 +204,6 @@ void eval(char *cmdline)
             printf("[%d] (%d) %s", bg_job->jid, pid, cmdline);
             sigprocmask(SIG_SETMASK, &prev_mask, NULL);
         }
-        // sigprocmask(SIG_SETMASK, &prev_mask, NULL);
         
     }
     return;
@@ -315,11 +307,19 @@ void do_bgfg(char **argv)
         use_jid = 1;
         jid = atoi(id + 1);
         selected_job = getjobjid(jobs, jid);
+        if (!selected_job) {
+            printf("%%%d: No such job\n", jid);
+            return;
+        }
     }
     else if ((*id > '0') && (*id <= '9')) {
         use_jid = 0;
         pid = atoi(id);
         selected_job = getjobpid(jobs, pid);
+        if (!selected_job) {
+            printf("(%d): No such process\n", pid);
+            return;
+        }
     }
     else {
         printf("%s: argument must be a PID or %%jobid\n", fg ? "fg" : "bg");
@@ -330,23 +330,16 @@ void do_bgfg(char **argv)
         printf("(%d): No such process\n", use_jid ? jid : pid);
     }
 
-
-    // if (*id == '%') { // command uses job id
-    //     jid = atoi(id + 1);
-    //     selected_job = getjobjid(jobs, jid);
-    // }
-    // else {
-    //     pid = atoi(id);
-    //     selected_job = getjobpid(jobs, pid);
-    // }
     if (!strcmp(argv[0], "fg")) { // foreground job
         kill(selected_job->pid, SIGCONT);
         selected_job->state = FG;
+        setpgid(selected_job->pid, 0);
         waitfg(selected_job->pid);
     } else { // background job
         kill(selected_job->pid, SIGCONT);
         printf("[%d] (%d) %s", selected_job->jid, selected_job->pid, selected_job->cmdline);
         selected_job->state = BG;
+        setpgid(selected_job->pid, selected_job->pid);
     }
     return;
 }
@@ -387,6 +380,7 @@ void sigchld_handler(int sig)
         if (WIFSTOPPED(status)) {
             struct job_t *job = getjobpid(jobs, pid);
             printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, WSTOPSIG(status));
+            job->state = ST;
         }
         else if (WIFSIGNALED(status)) {
             struct job_t *job = getjobpid(jobs, pid);
@@ -402,8 +396,6 @@ void sigchld_handler(int sig)
         }
         
     }
-    // if (errno != ECHILD)
-    //     unix_error("waitpid fault!");
     errno = old_errno;
     return;
 }
