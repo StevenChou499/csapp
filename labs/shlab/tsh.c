@@ -184,7 +184,8 @@ void eval(char *cmdline)
         sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         if ((pid = fork()) == 0) { /* Child process*/
             sigprocmask(SIG_UNBLOCK, &mask, NULL);
-            setpgid(0, 0);
+            // if (bg)
+            //     setpgid(0, 0);
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
@@ -196,6 +197,7 @@ void eval(char *cmdline)
         if (!bg) {
             addjob(jobs, pid, FG, cmdline);
             sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+            setpgid(pid, 0);
             waitfg(pid);
         }
         else {
@@ -203,6 +205,7 @@ void eval(char *cmdline)
             struct job_t *bg_job = getjobpid(jobs, pid);
             printf("[%d] (%d) %s", bg_job->jid, pid, cmdline);
             sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+            setpgid(pid, pid);
         }
         
     }
