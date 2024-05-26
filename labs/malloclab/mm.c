@@ -119,7 +119,7 @@ void *mm_malloc(size_t size)
             PUT(HDRP(curr), PACK(newsize, 1));
             PUT(FTRP(curr), PACK(newsize, 1));
             PUT(HDRP(NEXT_BLOCK(curr)), PACK(curr_blk_size - newsize, 0));
-            char *next_block = NXTFREEBLK(curr);
+            char *next_block = NEXT_BLOCK(curr);
             // printf("The next block address is %p\n", (ull)next_block);
             *(ull *)next_block = *(ull *)curr;
             *((ull *)next_block + 1) = *((ull *)curr + 1);
@@ -127,7 +127,7 @@ void *mm_malloc(size_t size)
             *(ull *)PRVFREEBLK(next_block) = (ull)next_block;
             // printf("The footer addr is %p, the prev of next block is %p\n", FTRP(curr), (char*)(next_block - 2 * DSIZE));
             // printf("The size of previous block is %d\n", GET_SIZE(next_block - 2 * DSIZE));
-            printf("Choosing starting address: 0x%llX\n", (ull)curr);
+            // printf("Choosing starting address: 0x%llX\n", (ull)curr);
             return curr;
         }
         else if (curr_blk_size >= newsize) { // don't split block
@@ -135,12 +135,13 @@ void *mm_malloc(size_t size)
             PUT(HDRP(curr), PACK(curr_blk_size, 1));
             PUT(FTRP(curr), PACK(curr_blk_size, 1));
             char *next_block = NXTFREEBLK(curr);
+            char *prev_block = PRVFREEBLK(curr);
             // printf("The next block address is %p\n", (ull)next_block);
-            *(ull *)next_block = *(ull *)curr;
+            *(ull *)prev_block = *(ull *)curr;
             *((ull *)next_block + 1) = *((ull *)curr + 1);
             *((ull *)NXTFREEBLK(next_block) + 1) = (ull)next_block;
             *(ull *)PRVFREEBLK(next_block) = (ull)next_block;
-            printf("Choosing starting address: 0x%llX\n", (ull)curr);
+            // printf("Choosing starting address: 0x%llX\n", (ull)curr);
             return curr; // return the pointer
         }
         else {
@@ -150,9 +151,9 @@ void *mm_malloc(size_t size)
     }
     if (curr == heap_start) { // current heap size isn't large enough, get another block
         // do something
-        printf("Allocating more heap space...\n");
+        // printf("Allocating more heap space...\n");
         char *new_mem = mem_sbrk(CHUNKSIZE);
-        printf("new heap start address: 0x%llX\n", (ull)new_mem);
+        // printf("new heap start address: 0x%llX\n", (ull)new_mem);
         char *last_block = PRVFREEBLK(heap_start);
         *((ull *)last_block) = (ull)new_mem;
         *((ull *)heap_start + 1) = (ull)new_mem;
@@ -160,13 +161,17 @@ void *mm_malloc(size_t size)
         *((ull *)new_mem + 1) = (ull)last_block;
         PUT(HDRP(new_mem), PACK(CHUNKSIZE, 0));
         PUT(FTRP(new_mem), PACK(CHUNKSIZE, 0));
-        PUT(HDRP(NEXT_BLOCK(new_mem)), PACK(0, 1));
+        heap_end += CHUNKSIZE;
+        PUT(heap_end - DSIZE, PACK(0, 1));
+        // PUT(HDRP(NEXT_BLOCK(new_mem)), PACK(0, 1));
+        // printf("After allocating new heap:\n");
+        // mm_info();
         char *new = mm_malloc(size);
         // printf("Choosing starting address: 0x%llX\n", (ull)new);
         return new;
     }
-    printf("mallocing %d bytes...\n", newsize);
-    mm_info();
+    // printf("mallocing %d bytes...\n", newsize);
+    // mm_info();
 }
 
 /*
