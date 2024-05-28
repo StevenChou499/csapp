@@ -111,23 +111,28 @@ void *mm_malloc(size_t size)
     newsize = (newsize < 16) ? 16 : newsize;
     newsize += 2 * SIZE_T_SIZE;
     // printf("The added header and footer size is total %d bytes.\n", newsize);
-    char* prev = heap_start, * curr = NXTFREEBLK(heap_start);
+    char* prev = heap_start, *curr = NXTFREEBLK(heap_start);
     while (curr != heap_start) {
         int curr_blk_size = BLOCK_SIZE(curr);
         if (curr_blk_size >= (newsize + (4 * SIZE_T_SIZE))) { // split for large enough block
-            PUT(FTRP(curr), PACK(curr_blk_size - newsize, 0));
+            char *next_block = curr + (newsize);
             PUT(HDRP(curr), PACK(newsize, 1));
             PUT(FTRP(curr), PACK(newsize, 1));
-            PUT(HDRP(NEXT_BLOCK(curr)), PACK(curr_blk_size - newsize, 0));
-            char *next_block = NEXT_BLOCK(curr);
+            PUT(HDRP(next_block), PACK(curr_blk_size - newsize, 0));
+            PUT(FTRP(next_block), PACK(curr_blk_size - newsize, 0));
+            // PUT(FTRP(curr), PACK(curr_blk_size - newsize, 0));
+            // PUT(HDRP(curr), PACK(newsize, 1));
+            // PUT(FTRP(curr), PACK(newsize, 1));
+            // PUT(HDRP(NEXT_BLOCK(curr)), PACK(curr_blk_size - newsize, 0));
+            // char *next_block = NEXT_BLOCK(curr);
             // printf("The next block address is %p\n", (ull)next_block);
             *(ull *)next_block = *(ull *)curr;
             *((ull *)next_block + 1) = *((ull *)curr + 1);
-            *((ull *)NXTFREEBLK(next_block) + 1) = (ull)next_block;
-            *(ull *)PRVFREEBLK(next_block) = (ull)next_block;
+            *((ull *)NXTFREEBLK(curr) + 1) = (ull)next_block;
+            *(ull *)PRVFREEBLK(curr) = (ull)next_block;
             // printf("The footer addr is %p, the prev of next block is %p\n", FTRP(curr), (char*)(next_block - 2 * DSIZE));
             // printf("The size of previous block is %d\n", GET_SIZE(next_block - 2 * DSIZE));
-            // printf("Choosing starting address: 0x%llX\n", (ull)curr);
+            // printf("Choosing starting address for splitting: 0x%llX\n", (ull)curr);
             return curr;
         }
         else if (curr_blk_size >= newsize) { // don't split block
@@ -137,10 +142,12 @@ void *mm_malloc(size_t size)
             char *next_block = NXTFREEBLK(curr);
             char *prev_block = PRVFREEBLK(curr);
             // printf("The next block address is %p\n", (ull)next_block);
-            *(ull *)prev_block = *(ull *)curr;
-            *((ull *)next_block + 1) = *((ull *)curr + 1);
-            *((ull *)NXTFREEBLK(next_block) + 1) = (ull)next_block;
-            *(ull *)PRVFREEBLK(next_block) = (ull)next_block;
+            *(ull *)prev_block = (ull)next_block;
+            *((ull *)next_block + 1) = (ull)prev_block;
+            // *(ull *)prev_block = *(ull *)curr;
+            // *((ull *)next_block + 1) = *((ull *)curr + 1);
+            // *((ull *)next_block + 1) = (ull)prev_block;
+            // *(ull *)prev_block = (ull)next_block;
             // printf("Choosing starting address: 0x%llX\n", (ull)curr);
             return curr; // return the pointer
         }
@@ -155,14 +162,33 @@ void *mm_malloc(size_t size)
         char *new_mem = mem_sbrk(CHUNKSIZE);
         // printf("new heap start address: 0x%llX\n", (ull)new_mem);
         char *last_block = PRVFREEBLK(heap_start);
-        *((ull *)last_block) = (ull)new_mem;
-        *((ull *)heap_start + 1) = (ull)new_mem;
-        *(ull *)new_mem = (ull)heap_start;
-        *((ull *)new_mem + 1) = (ull)last_block;
-        PUT(HDRP(new_mem), PACK(CHUNKSIZE, 0));
-        PUT(FTRP(new_mem), PACK(CHUNKSIZE, 0));
+        char *prev_block = PREV_BLOCK(new_mem);
         heap_end += CHUNKSIZE;
         PUT(heap_end - DSIZE, PACK(0, 1));
+        // if (GET_ALLOC(HDRP(prev_block)) == 0) { // if previous block is free
+        if (last_block == prev_block) { // if previous block is free
+            // do nothing
+            ull prev_size = GET_SIZE(HDRP(prev_block));
+            ull total_size = prev_size + CHUNKSIZE;
+            PUT(HDRP(prev_block), PACK(total_size, 0));
+            PUT(FTRP(prev_block), PACK(total_size, 0));
+        } else { // the previous block isn't free
+            // do anything
+            *((ull *)last_block) = (ull)new_mem;
+            *((ull *)heap_start + 1) = (ull)new_mem;
+            *(ull *)new_mem = (ull)heap_start;
+            *((ull *)new_mem + 1) = (ull)last_block;
+            PUT(HDRP(new_mem), PACK(CHUNKSIZE, 0));
+            PUT(FTRP(new_mem), PACK(CHUNKSIZE, 0));
+        }
+        // *((ull *)last_block) = (ull)new_mem;
+        // *((ull *)heap_start + 1) = (ull)new_mem;
+        // *(ull *)new_mem = (ull)heap_start;
+        // *((ull *)new_mem + 1) = (ull)last_block;
+        // PUT(HDRP(new_mem), PACK(CHUNKSIZE, 0));
+        // PUT(FTRP(new_mem), PACK(CHUNKSIZE, 0));
+        // heap_end += CHUNKSIZE;
+        // PUT(heap_end - DSIZE, PACK(0, 1));
         // PUT(HDRP(NEXT_BLOCK(new_mem)), PACK(0, 1));
         // printf("After allocating new heap:\n");
         // mm_info();
@@ -170,8 +196,6 @@ void *mm_malloc(size_t size)
         // printf("Choosing starting address: 0x%llX\n", (ull)new);
         return new;
     }
-    // printf("mallocing %d bytes...\n", newsize);
-    // mm_info();
 }
 
 /*
@@ -182,61 +206,69 @@ void mm_free(void *ptr)
     char *curr = (char *)ptr;
     char *prev = PREV_BLOCK(curr);
     char *next = NEXT_BLOCK(curr);
-    ull prev_block_size = GET_SIZE(HDRP(PREV_BLOCK((char *)ptr)));
-    ull freed_size = GET_SIZE(HDRP((char *)ptr));
-    ull next_block_size = GET_SIZE(HDRP(NEXT_BLOCK((char *)ptr)));
+    // ull prev_block_size = GET_SIZE(HDRP(PREV_BLOCK((char *)ptr)));
+    // ull freed_size = GET_SIZE(HDRP((char *)ptr));
+    // ull next_block_size = GET_SIZE(HDRP(NEXT_BLOCK((char *)ptr)));
 
-    ull prev_status = GET_ALLOC((ull *)ptr - 2);
-    ull next_status = GET_ALLOC(HDRP(NEXT_BLOCK((char *)ptr)));
-    if ((prev_status == 0UL) && (next_status == 0UL)) { // merge both block
-        // do both
-        ull total_size = prev_block_size + freed_size + next_block_size;
-        *((ull *)NXTFREEBLK(next) + 1) = (ull)prev;
-        *(ull *)prev = *(ull *)next;
-        PUT(HDRP(prev), PACK(total_size, 0));
-        PUT(FTRP(next), PACK(total_size, 0));
-        // *(ull *)prev = *(ull *)next;
-        // *((ull *)NXTFREEBLK(next) + 1) = (ull)prev;
-    } else if (prev_status == 0UL) { // merge previous block
-        // do something
-        // printf("The previous block address is %llx: \n", (ull)prev);
-        // printf("The prev prev is 0x%llx, prev next is 0x%llX\n", *((ull *)prev + 1), *(ull *)prev);
-        // printf("The current block address is %llx: \n", (ull)curr);
-        // printf("The curr prev is 0x%llx, curr next is 0x%llX\n", *((ull *)curr + 1), *(ull *)curr);
-        ull total_size = prev_block_size + freed_size;
-        // *(ull *)prev = *(ull *)curr;
-        // *(ull *)PRVFREEBLK(curr) = (ull)prev;
-        // *((ull *)NXTFREEBLK(prev) + 1) = (ull)prev;
-        PUT(HDRP(prev), PACK(total_size, 0));
-        PUT(FTRP(curr), PACK(total_size, 0));
-    } else if (next_status == 0UL) { // merge next block
-        // do something
-        ull total_size = freed_size + next_block_size;
-        // *(ull *)curr = *(ull *)next;
-        *(ull *)PRVFREEBLK(next) = (ull)curr;
-        *((ull *)NXTFREEBLK(next) + 1) = (ull)curr;
-        *(ull *)curr = *(ull *)next;
-        *((ull *)curr + 1) = *((ull *)next + 1);
-        // *((ull *)NXTFREEBLK(next) + 1) = (ull)curr;
-        PUT(HDRP(curr), PACK(total_size, 0));
-        PUT(FTRP(next), PACK(total_size, 0));
-    } else { // no need to merge
-        // do nothing
-        PUT(HDRP((char *)ptr), PACK(freed_size, 0));
-        PUT(FTRP((char *)ptr), PACK(freed_size, 0));
-        *(ull *)ptr = *(ull *)heap_start;    // freed blk next blk is strt next blk
-        *((ull *)ptr + 1) = (ull)heap_start; // freed blk prev blk is strt blk
-        *((ull *)NXTFREEBLK(heap_start) + 1) = (ull)ptr; // 2nd blk prev blk is freed blk
-        *(ull *)heap_start = (ull)ptr;       // strt blk next blk is freed blk
+    // ull prev_status = GET_ALLOC((ull *)ptr - 2);
+    // ull next_status = GET_ALLOC(HDRP(NEXT_BLOCK((char *)ptr)));
+    while ((prev != heap_start) && (GET_ALLOC(HDRP(prev)) != 0U)) {
+        prev = PREV_BLOCK(prev);
     }
-    // ull new_status = PACK(GET_SIZE(HDRP((char *)ptr)), 0);
-    // PUT(HDRP((char *)ptr), new_status);
-    // PUT(FTRP((char *)ptr), new_status);
-    // *(ull *)ptr = *(ull *)heap_start;    // freed blk next blk is strt next blk
-    // *((ull *)ptr + 1) = (ull)heap_start; // freed blk prev blk is strt blk
-    // *((ull *)NXTFREEBLK(heap_start) + 1) = (ull)ptr; // 2nd blk prev blk is freed blk
-    // *(ull *)heap_start = (ull)ptr;       // strt blk next blk is freed blk
+    while ((GET_SIZE(HDRP(next)) != 0U) && (GET_ALLOC(HDRP(next)) != 0U)) {
+        next = NEXT_BLOCK(next);
+    }
 
+    if (prev == heap_start) { // There is no previous free block
+        *(ull *)heap_start = (ull)curr;
+        *((ull *)curr + 1) = (ull)heap_start;
+    } else {
+        *(ull *)prev = (ull)curr;
+        *((ull *)curr + 1) = (ull)prev;
+    }
+
+    if (GET_SIZE(HDRP(next)) == 0U) {
+        *(ull *)curr = (ull)heap_start;
+        *((ull *)heap_start + 1) = (ull)curr;
+    } else {
+        *(ull *)curr = (ull)next;
+        *((ull *)next + 1) = (ull)curr;
+    }
+
+    prev = PREV_BLOCK(curr);
+    next = NEXT_BLOCK(curr);
+    ull prev_status = GET_ALLOC(HDRP(prev));
+    ull next_status = GET_ALLOC(HDRP(next));
+    ull prev_size   = GET_SIZE(HDRP(prev));
+    ull free_size   = GET_SIZE(HDRP(curr));
+    ull next_size   = GET_SIZE(HDRP(next));
+
+    if ((prev_status == 0U) && (next_status == 0U)) {
+        // merge both blocks
+        ull total_size = prev_size + free_size + next_size;
+        *(ull *)prev = *(ull *)next;
+        *((ull *)NXTFREEBLK(next) + 1) = (ull)prev;
+        PUT(HDRP(prev), PACK(total_size, 0));
+        PUT(FTRP(prev), PACK(total_size, 0));
+    } else if (prev_status == 0U) {
+        // merge prev block
+        ull total_size = prev_size + free_size;
+        *(ull *)prev = *(ull *)curr;
+        *((ull *)NXTFREEBLK(curr) + 1) = (ull)prev;
+        PUT(HDRP(prev), PACK(total_size, 0));
+        PUT(FTRP(prev), PACK(total_size, 0));
+    } else if (next_status == 0U) {
+        // merge next block
+        ull total_size = free_size + next_size;
+        *(ull *)curr = *(ull *)next;
+        *((ull *)NXTFREEBLK(next) + 1) = (ull)curr;
+        PUT(HDRP(curr), PACK(total_size, 0));
+        PUT(FTRP(curr), PACK(total_size, 0));
+    } else {
+        // do not merge
+        PUT(HDRP(curr), PACK(free_size, 0));
+        PUT(FTRP(curr), PACK(free_size, 0));
+    }
 }
 
 /*
