@@ -276,7 +276,7 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-   int original_size = GET_SIZE(HDRP(ptr));
+    int original_size = GET_SIZE(HDRP(ptr));
     void *new_ptr = mm_malloc(size);
     memcpy(new_ptr, ptr, size);
     // for (int i = 0; i < original_size; i++) {
@@ -292,12 +292,12 @@ void mm_info()
     char* root = (char*)heap_start;
     printf("root info: 0x%llX, %d bytes\n", (ull) heap_start, BLOCK_SIZE(heap_start));
     printf("\tprev block: NONE, next block: 0x%llX\n", (ull)NEXT_BLOCK(heap_start));
-    printf("\tAllocation status: %d\n", GET_ALLOC(HDRP(heap_start)));
+    printf("\tAllocation status: %lld\n", GET_ALLOC(HDRP(heap_start)));
     printf("\tprev free block: 0x%llX", *((ull *)root + 1));
     printf(", next free block: 0x%llX\n\n", *(ull *)root);
     root = NEXT_BLOCK(root);
     while (BLOCK_SIZE(root) != 0U) {
-        printf("block info: 0x%llX, %d bytes\n", (ull)root, BLOCK_SIZE(root));
+        printf("block info: 0x%llX, %lld bytes\n", (ull)root, BLOCK_SIZE(root));
         // printf("The size of previous block is %d\n", GET_SIZE(root - 2 * DSIZE));
         printf("\tprev block: 0x%llX, next block: ", (ull)PREV_BLOCK(root));
         if (BLOCK_SIZE(NEXT_BLOCK(root)) == 0U) {
@@ -305,7 +305,7 @@ void mm_info()
         } else {
             printf("0x%llX", (ull)NEXT_BLOCK(root));
         }
-        printf("\n\tAllocation status: %d\n", GET_ALLOC(HDRP(root)));
+        printf("\n\tAllocation status: %lld\n", GET_ALLOC(HDRP(root)));
         if (GET_ALLOC(HDRP(root)) == 0U) {
             printf("\tprev free block: 0x%llX", *((ull *)root + 1));
             printf(", next free block: 0x%llX\n", *(ull *)root);
