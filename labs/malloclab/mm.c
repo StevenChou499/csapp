@@ -206,68 +206,68 @@ void mm_free(void *ptr)
     char *curr = (char *)ptr;
     char *prev = PREV_BLOCK(curr);
     char *next = NEXT_BLOCK(curr);
-    // ull prev_block_size = GET_SIZE(HDRP(PREV_BLOCK((char *)ptr)));
-    // ull freed_size = GET_SIZE(HDRP((char *)ptr));
-    // ull next_block_size = GET_SIZE(HDRP(NEXT_BLOCK((char *)ptr)));
+    ull prev_block_size = GET_SIZE(HDRP(PREV_BLOCK((char *)ptr)));
+    ull freed_size = GET_SIZE(HDRP((char *)ptr));
+    ull next_block_size = GET_SIZE(HDRP(NEXT_BLOCK((char *)ptr)));
 
-    // ull prev_status = GET_ALLOC((ull *)ptr - 2);
-    // ull next_status = GET_ALLOC(HDRP(NEXT_BLOCK((char *)ptr)));
-    while ((prev != heap_start) && (GET_ALLOC(HDRP(prev)) != 0U)) {
-        prev = PREV_BLOCK(prev);
-    }
-    while ((GET_SIZE(HDRP(next)) != 0U) && (GET_ALLOC(HDRP(next)) != 0U)) {
-        next = NEXT_BLOCK(next);
-    }
-
-    if (prev == heap_start) { // There is no previous free block
-        *(ull *)heap_start = (ull)curr;
-        *((ull *)curr + 1) = (ull)heap_start;
-    } else {
-        *(ull *)prev = (ull)curr;
-        *((ull *)curr + 1) = (ull)prev;
-    }
-
-    if (GET_SIZE(HDRP(next)) == 0U) {
-        *(ull *)curr = (ull)heap_start;
-        *((ull *)heap_start + 1) = (ull)curr;
-    } else {
-        *(ull *)curr = (ull)next;
-        *((ull *)next + 1) = (ull)curr;
-    }
-
-    prev = PREV_BLOCK(curr);
-    next = NEXT_BLOCK(curr);
-    ull prev_status = GET_ALLOC(HDRP(prev));
-    ull next_status = GET_ALLOC(HDRP(next));
-    ull prev_size   = GET_SIZE(HDRP(prev));
-    ull free_size   = GET_SIZE(HDRP(curr));
-    ull next_size   = GET_SIZE(HDRP(next));
-
+    ull prev_status = GET_ALLOC((ull *)ptr - 2);
+    ull next_status = GET_ALLOC(HDRP(NEXT_BLOCK((char *)ptr)));
     if ((prev_status == 0U) && (next_status == 0U)) {
-        // merge both blocks
-        ull total_size = prev_size + free_size + next_size;
-        *(ull *)prev = *(ull *)next;
-        *((ull *)NXTFREEBLK(next) + 1) = (ull)prev;
-        PUT(HDRP(prev), PACK(total_size, 0));
-        PUT(FTRP(prev), PACK(total_size, 0));
+        // both of the blocks are freed
+        char *prev_prev = PRVFREEBLK(prev);
+        char *prev_next = NXTFREEBLK(prev);
+        char *next_prev = PRVFREEBLK(next);
+        char *next_next = NXTFREEBLK(next);
+        ull total_size = prev_block_size + freed_size + next_block_size;
+        if (prev_prev == next) {
+            // first next, then prev
+            if (next_next != prev) {
+                fprintf(stderr, "Error linked list!\n");
+                exit(1);
+            }
+            *((ull *)prev + 1) = (ull)next_prev;
+            *(ull *)next_prev = (ull)prev;
+            PUT(HDRP(prev), PACK(total_size, 0));
+            PUT(FTRP(prev), PACK(total_size, 0));
+        } else if (prev_next == next) {
+            // first prev, then next
+            if (next_prev != prev) {
+                fprintf(stderr, "Error linked list!\n");
+                exit(1);
+            }
+            *(ull *)prev = *(ull *)next;
+            *((ull *)next_next + 1) = (ull)prev;
+            PUT(HDRP(prev), PACK(total_size, 0));
+            PUT(FTRP(prev), PACK(total_size, 0));
+        } else {
+            // prev and next has no relation
+            *(ull *)next_prev = (ull)next_next;
+            *((ull *)next_next + 1) = (ull)next_prev;
+            PUT(HDRP(prev), PACK(total_size, 0));
+            PUT(FTRP(prev), PACK(total_size, 0));
+        }
     } else if (prev_status == 0U) {
-        // merge prev block
-        ull total_size = prev_size + free_size;
-        *(ull *)prev = *(ull *)curr;
-        *((ull *)NXTFREEBLK(curr) + 1) = (ull)prev;
+        // the prev block is freed
+        ull total_size = prev_block_size + freed_size;
         PUT(HDRP(prev), PACK(total_size, 0));
         PUT(FTRP(prev), PACK(total_size, 0));
     } else if (next_status == 0U) {
-        // merge next block
-        ull total_size = free_size + next_size;
+        // the next block is freed
+        ull total_size = freed_size + next_block_size;
         *(ull *)curr = *(ull *)next;
+        *((ull *)curr + 1) = *((ull *)next + 1);
+        *(ull *)PRVFREEBLK(next) = (ull)curr;
         *((ull *)NXTFREEBLK(next) + 1) = (ull)curr;
         PUT(HDRP(curr), PACK(total_size, 0));
         PUT(FTRP(curr), PACK(total_size, 0));
     } else {
-        // do not merge
-        PUT(HDRP(curr), PACK(free_size, 0));
-        PUT(FTRP(curr), PACK(free_size, 0));
+        // just free myself
+        *(ull *)curr = *(ull *)heap_start;
+        *((ull *)curr + 1) = (ull)heap_start;
+        *((ull *)NXTFREEBLK(heap_start) + 1) = (ull)curr;
+        *(ull *)heap_start = (ull)curr;
+        PUT(HDRP(curr), PACK(freed_size, 0));
+        PUT(FTRP(curr), PACK(freed_size, 0));
     }
 }
 
