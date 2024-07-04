@@ -162,8 +162,10 @@ int cat_http_req(char *req_str, unsigned strlen,
 {
     return snprintf(req_str, 
                     strlen, 
-                    "GET http://localhost:%d%s\r\n%s\r\n", 
+                    "GET http://localhost:%d%s\r\n%s%s%s\r\n", 
                     port_num, 
                     req_struct->http_version, 
+                    "Connection: close\r\n", 
+                    "Proxy-Connection: close\r\n", 
                     req_struct->http_req_header);
 }
