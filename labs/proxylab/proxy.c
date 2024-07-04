@@ -25,6 +25,9 @@ void recv_client_req(char *listen_port);
 int parse_cli_req(char *req_str, http_req *req_struct);
 /* Check the url, modify the http version and return the server port number*/
 int check_url_port(http_req *req_struct);
+/* Concatenate http request string for actual server */
+int cat_http_req(char *req_str, unsigned strlen, 
+                 unsigned port_num, http_req *req_struct);
 
 int main(int argc, char *argv[])
 {
@@ -52,21 +55,35 @@ void recv_client_req(char *listen_port)
     printf("Client connected!!\n");
 
     size_t n;
-    char buf[1024];
-    rio_t rio;
+    char http_buf[MAXLINE];
+    rio_t client_rio, server_rio;
     http_req req_content;
+    char serv_port[8] = {0};
 
-    Rio_readinitb(&rio, connfd);
-    n = Rio_readlineb(&rio, buf, 1024);
-    printf("%s", buf);
+    Rio_readinitb(&client_rio, connfd);
+    n = Rio_readnb(&client_rio, http_buf, MAXLINE);
 
-    parse_cli_req(buf, &req_content);
+    int parse_result = parse_cli_req(http_buf, &req_content);
+    if (parse_result < 0) {
+        fprintf(stderr, "Request parsing error.\n");
+        exit(0);
+    }
 
-    char *ret = "Hello World\r\n\r\n";
+    int server_port = check_url_port(&req_content);
+    if (server_port < 0) {
+        fprintf(stderr, "Server port error.\n");
+        exit(0);
+    }
 
-    Rio_writen(connfd, ret, strlen(ret));
+    sprintf(serv_port, "%7d", server_port);
+    int client_fd = Open_clientfd("localhost", serv_port);
+    int serv_send_len = cat_http_req(http_buf, MAXLINE, serv_port, &req_struct);
+    Rio_writen(client_fd, http_buf, serv_send_len);
+    int serv_recv_len = Rio_readnb(&server_rio, http_buf, MAXLINE);
+    Rio_writen(connfd, http_buf, serv_recv_len);
 
     Close(connfd);
+    Close(client_fd);
 }
 
 int parse_cli_req(char *req_str, http_req *req_struct)
@@ -98,35 +115,55 @@ int parse_cli_req(char *req_str, http_req *req_struct)
 
 int check_url_port(http_req *req_struct)
 {
-    int serv_port_num = 80; // the default server port
-    char request_content[128];
+    int serv_port_num = 80; // default server port
+    char request_content[128] = {0};
 
-    // check if http version is 1.1. If so, change to 1.0
+    // check if HTTP version is 1.1. If so, change to 1.0
     if (strcmp(req_struct->http_version, "HTTP/1.1") == 0)
         strcpy(req_struct->http_version, "HTTP/1.0");
     
-    char *str_ptr = strstr(req_struct->http_url, "http://");
-    if (str_ptr == NULL) {
-        fprintf(stderr, "Uncorrect url.\n");
+    // Verify the URL starts with "http://"
+    const char *url_start = "http://";
+    char *url_ptr = strstr(req_struct->http_url, url_start);
+    if (url_ptr == NULL) {
+        fprintf(stderr, "Incorrect url.\n");
         return -1;
     }
 
-    str_ptr += 8;
-    if ((str_ptr = strstr(str_ptr, ":")) == NULL) {
-        // choosing the default port 80
-        if (sscanf(str_ptr, "%s", request_content) == 0) {
-            fprintf(stderr, "Can't find corresponding request.\n");
+    // Move the pointer past "http://"
+    url_ptr += strlen(url_start);
+    
+    // Check for a port number
+    char *port_ptr = strstr(url_ptr, ":");
+    if (port_ptr != NULL) {
+        // Found a port number, parse it
+        port_ptr++; // Move past ':'
+        if (sscanf(port_ptr, "%d%127s", &serv_port_num, request_content) != 2) {
+            fprintf(stderr, "Can't find corresponding port number or request.\n");
             return -1;
         }
     } else {
-        str_ptr++;
-        if (sscanf(str_ptr, "%d%s", &serv_port_num, request_content) == 0) {
-            fprintf(stderr, "Can't find corresponding port number.\n");
+        // No port number, look for the path directly
+        char *path_ptr = strstr(url_ptr, "/");
+        if ((path_ptr == NULL) || 
+            (sscanf(path_ptr, "%127s", request_content) != 1)) {
+            fprintf(stderr, "Can't find corresponding request.\n");
             return -1;
         }
     }
 
-    strncpy(req_struct->http_url, request_content, sizeof(request_content));
+    strncpy(req_struct->http_url, request_content, sizeof(request_content) - 1);
+    req_struct->http_url[sizeof(req_struct->http_url) - 1] = '\0';
     return serv_port_num;
-    
+}
+
+int cat_http_req(char *req_str, unsigned strlen, 
+                 unsigned port_num, http_req *req_struct)
+{
+    return snprintf(req_str, 
+                    strlen, 
+                    "GET http://localhost:%d%s\r\n%s\r\n", 
+                    port_num, 
+                    req_struct->http_version, 
+                    req_struct->http_req_header);
 }
