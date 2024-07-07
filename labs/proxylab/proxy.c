@@ -26,8 +26,7 @@ int parse_cli_req(char *req_str, http_req *req_struct);
 /* Check the url, modify the http version and return the server port number*/
 int check_url_port(http_req *req_struct);
 /* Concatenate http request string for actual server */
-int cat_http_req(char *req_str, unsigned strlen, 
-                 unsigned port_num, http_req *req_struct);
+int cat_http_req(char *req_str, unsigned strlen, http_req *req_struct);
 
 int main(int argc, char *argv[])
 {
@@ -76,10 +75,13 @@ void recv_client_req(char *listen_port)
     }
 
     sprintf(serv_port, "%7d", server_port);
+    printf("The server port is using %d\n", server_port);
     int client_fd = Open_clientfd("localhost", serv_port);
-    int serv_send_len = cat_http_req(http_buf, MAXLINE, serv_port, &req_struct);
+    int serv_send_len = cat_http_req(http_buf, MAXLINE, &req_content);
     Rio_writen(client_fd, http_buf, serv_send_len);
+    printf("Sending : \n%s", http_buf);
     int serv_recv_len = Rio_readnb(&server_rio, http_buf, MAXLINE);
+    printf("The received from server is %s\n", http_buf);
     Rio_writen(connfd, http_buf, serv_recv_len);
 
     Close(connfd);
@@ -157,15 +159,13 @@ int check_url_port(http_req *req_struct)
     return serv_port_num;
 }
 
-int cat_http_req(char *req_str, unsigned strlen, 
-                 unsigned port_num, http_req *req_struct)
+int cat_http_req(char *req_str, unsigned strlen, http_req *req_struct)
 {
     return snprintf(req_str, 
                     strlen, 
-                    "GET http://localhost:%d%s\r\n%s%s%s\r\n", 
-                    port_num, 
+                    "GET /home.html %s\r\n%s%s\r\n", 
                     req_struct->http_version, 
-                    "Connection: close\r\n", 
-                    "Proxy-Connection: close\r\n", 
-                    req_struct->http_req_header);
+                    "Connection: Close\r\n", 
+                    "Proxy-Connection: Close\r\n");
+                    // req_struct->http_req_header);
 }
