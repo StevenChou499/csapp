@@ -77,7 +77,7 @@ void parse_cli_req(int clientfd)
     if (!Rio_readlineb(&rio, http_buf, MAXLINE))
         return;
     printf("%s", http_buf);
-    sscanf("%s %s %s", method, uri, version);
+    sscanf(http_buf, "%s %s %s", method, uri, version);
     if (strcasecmp("GET", method)) {
         fprintf(stderr, "Not a GET HTTP request\n");
         return;
