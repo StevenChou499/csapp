@@ -22,7 +22,14 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64;
 /* This function receive the connection with a client */
 void recv_client_req(char *listen_port);
 /* Parse the client request content, if success return 0, else return -1 */
-int parse_cli_req(char *req_str, http_req *req_struct);
+// int parse_cli_req(char *req_str, http_req *req_struct);
+void parse_cli_req(int clientfd);
+/* Read all the http request headers */
+void read_req_headers(rio_t *rp);
+/* Parse the client's uri */
+void parse_uri(char *uri, char *version, char *filename, int *server_port);
+/* Make connection to server and get http content */
+void connect_server(int port_num, char *filename, char *buf);
 /* Check the url, modify the http version and return the server port number*/
 int check_url_port(http_req *req_struct);
 /* Concatenate http request string for actual server */
@@ -36,84 +43,198 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    recv_client_req(argv[1]);
-
-    printf("%s", user_agent_hdr);
-    return 0;
-}
-
-void recv_client_req(char *listen_port)
-{
+    // Initial variables
     int listenfd, connfd;
+    char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     
-    listenfd = Open_listenfd(listen_port);
+    // Receive connection from client
+    listenfd = Open_listenfd(argv[1]);
     clientlen = sizeof(struct sockaddr_storage);
     connfd = Accept(listenfd, &clientaddr, &clientlen);
-    printf("Client connected!!\n");
+    Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
+                port, MAXLINE, 0);
+    printf("Accepted connection from (%s, %s)\n", hostname, port);
 
-    size_t n;
-    char http_buf[MAXLINE];
-    rio_t client_rio, server_rio;
-    http_req req_content;
-    char serv_port[8] = {0};
-
-    Rio_readinitb(&client_rio, connfd);
-    n = Rio_readnb(&client_rio, http_buf, MAXLINE);
-
-    int parse_result = parse_cli_req(http_buf, &req_content);
-    if (parse_result < 0) {
-        fprintf(stderr, "Request parsing error.\n");
-        exit(0);
-    }
-
-    int server_port = check_url_port(&req_content);
-    if (server_port < 0) {
-        fprintf(stderr, "Server port error.\n");
-        exit(0);
-    }
-
-    sprintf(serv_port, "%7d", server_port);
-    printf("The server port is using %d\n", server_port);
-    int client_fd = Open_clientfd("localhost", serv_port);
-    int serv_send_len = cat_http_req(http_buf, MAXLINE, &req_content);
-    Rio_writen(client_fd, http_buf, serv_send_len);
-    printf("Sending : \n%s", http_buf);
-    int serv_recv_len = Rio_readnb(&server_rio, http_buf, MAXLINE);
-    printf("The received from server is %s\n", http_buf);
-    Rio_writen(connfd, http_buf, serv_recv_len);
+    // parse client http request
+    parse_cli_req(connfd);
 
     Close(connfd);
-    Close(client_fd);
-}
 
-int parse_cli_req(char *req_str, http_req *req_struct)
-{
-    char *str_ptr = strstr(req_str, "\r\n");
-    if (str_ptr != NULL) {
-        str_ptr += 2;
-        strncpy(req_struct->http_req_header, 
-                str_ptr, 
-                sizeof(req_struct->http_req_header) - 1);
-        req_struct->http_req_header[sizeof(req_struct->http_req_header) - 2] = '\0';
-
-        if (sscanf(req_str, "%s %s %s", 
-                   req_struct->http_method, 
-                   req_struct->http_url, 
-                   req_struct->http_version) != 3) {
-            fprintf(stderr, "Failed to parse HTTP request line.\n");
-            return -1;
-        }
-
-        if (strcmp(req_struct->http_method, "GET") != 0)
-            return -1;
-    } else {
-        fprintf(stderr, "Failed to find the end of request line.\n");
-        return -1;
-    }
     return 0;
 }
+
+void parse_cli_req(int clientfd)
+{
+    char http_buf[MAXLINE], method[128], uri[MAXLINE], version[32];
+    char filename[MAXLINE];
+    int server_port;
+    rio_t rio;
+
+    /* Read client request line and headers */
+    Rio_readinitb(&rio, clientfd);
+    if (!Rio_readlineb(&rio, http_buf, MAXLINE))
+        return;
+    printf("%s", http_buf);
+    sscanf("%s %s %s", method, uri, version);
+    if (strcasecmp("GET", method)) {
+        fprintf(stderr, "Not a GET HTTP request\n");
+        return;
+    }
+    read_req_headers(&rio);
+
+    /* Parse client uri */
+    parse_uri(uri, version, filename, &server_port);
+    connect_server(server_port, filename, http_buf);
+
+    /* Transfer the content from server to client */
+    Rio_writen(connfd, buf, strlen(buf));
+    return;
+}
+
+void read_req_headers(rio_t *rp)
+{
+    char header_buf[MAXLINE];
+
+    Rio_readlineb(rp, header_buf, MAXLINE);
+    printf("%s", header_buf);
+    while (!strcmp(header_buf, "\r\n")) {
+        Rio_readlineb(rp, header_buf, MAXLINE);
+        printf("%s", header_buf);
+    }
+    return;
+}
+
+void parse_uri(char *uri, char *version, char *filename, int *server_port)
+{
+    char *uri_ptr;
+    char *http_uri = "http://";
+
+    /* Change http version to 1.0 */
+    if (strncmp(version, "HTTP/1.0"))
+        strncpy(version, "HTTP/1.0");
+    
+    /* Parse the uri and get the corresponding filename */
+    if ((uri = strstr(uri, http_uri)) == NULL) {
+        fprintf(stderr, "This isn't a http uri.\n");
+        return;
+    }
+    uri += strlen(uri);
+
+    if ((uri_ptr = strstr(uri, ":")) == NULL) {
+        // dedicated port not found, choose port 80
+        *server_port = 80;
+        uri = strstr(uri, "/");
+        sscanf(uri, "%s", filename);
+    } else {
+        // use dedicated port number
+        uri_ptr += 1;
+        sscanf(uri, "%d%s", server_port, filename);
+    }
+    printf("Choosing server by port %d with file name : %s", 
+           *server_port, filename);
+    return;
+}
+
+void connect_server(int port_num, char *filename, char *buf)
+{
+    char serv_port[16];
+    // char buf[MAXLINE];
+    rio_t rio;
+
+    sprintf(serv_port, "%d", port_num);
+    int clientfd = Open_clientfd("localhost", serv_port);
+    sprintf(buf, "GET %s HTTP/1.0\r\n", filename);
+    Rio_writen(clientfd, buf, strlen(buf));
+    sprintf(buf, "Host: localhost:%d", port_num);
+    Rio_writen(clientfd, buf, strlen(buf));
+    
+    Rio_readinitb(&rio, clientfd);
+    Rio_readnb(&rio, buf, MAXLINE);
+    printf("Received from server:\n%s", buf);
+
+    // Disconnect the server
+    Close(clientfd);
+    return;
+}
+// void recv_client_req(char *listen_port)
+// {
+//     // Initial variables
+//     int listenfd, connfd;
+//     char hostname[MAXLINE], port[MAXLINE];
+//     socklen_t clientlen;
+//     struct sockaddr_storage clientaddr;
+    
+//     // Receive connection from client
+//     listenfd = Open_listenfd(listen_port);
+//     clientlen = sizeof(struct sockaddr_storage);
+//     connfd = Accept(listenfd, &clientaddr, &clientlen);
+//     Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
+//                 port, MAXLINE, 0);
+//     printf("Accepted connection from (%s, %s)\n", hostname, port);
+
+//     size_t n;
+//     char http_buf[MAXLINE];
+//     rio_t client_rio, server_rio;
+//     http_req req_content;
+//     char serv_port[8] = {0};
+
+//     Rio_readinitb(&client_rio, connfd);
+//     n = Rio_readnb(&client_rio, http_buf, MAXLINE);
+
+//     int parse_result = parse_cli_req(http_buf, &req_content);
+//     if (parse_result < 0) {
+//         fprintf(stderr, "Request parsing error.\n");
+//         exit(0);
+//     }
+
+//     int server_port = check_url_port(&req_content);
+//     if (server_port < 0) {
+//         fprintf(stderr, "Server port error.\n");
+//         exit(0);
+//     }
+
+//     sprintf(serv_port, "%7d", server_port);
+//     printf("The server port is using %d\n", server_port);
+//     int client_fd = Open_clientfd("localhost", serv_port);
+//     int serv_send_len = cat_http_req(http_buf, MAXLINE, &req_content);
+//     Rio_writen(client_fd, http_buf, serv_send_len);
+//     printf("Sending : \n%s", http_buf);
+//     int serv_recv_len = Rio_readnb(&server_rio, http_buf, MAXLINE);
+//     printf("The received from server is %s\n", http_buf);
+//     Rio_writen(connfd, http_buf, serv_recv_len);
+
+//     Close(connfd);
+//     Close(client_fd);
+// }
+
+// int parse_cli_req(char *req_str, http_req *req_struct)
+// {
+//     char *str_ptr = strstr(req_str, "\r\n");
+//     if (str_ptr != NULL) {
+//         str_ptr += 2;
+//         strncpy(req_struct->http_req_header, 
+//                 str_ptr, 
+//                 sizeof(req_struct->http_req_header) - 1);
+//         req_struct->http_req_header[sizeof(req_struct->http_req_header) - 2] = '\0';
+
+//         if (sscanf(req_str, "%s %s %s", 
+//                    req_struct->http_method, 
+//                    req_struct->http_url, 
+//                    req_struct->http_version) != 3) {
+//             fprintf(stderr, "Failed to parse HTTP request line.\n");
+//             return -1;
+//         }
+
+//         if (strcmp(req_struct->http_method, "GET") != 0)
+//             return -1;
+//     } else {
+//         fprintf(stderr, "Failed to find the end of request line.\n");
+//         return -1;
+//     }
+//     return 0;
+// }
 
 int check_url_port(http_req *req_struct)
 {
