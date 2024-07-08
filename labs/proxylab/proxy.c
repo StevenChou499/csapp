@@ -7,7 +7,6 @@
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
-#define MAXLINE 1024
 
 typedef struct {
     char http_method[16];
@@ -89,7 +88,7 @@ void parse_cli_req(int clientfd)
     connect_server(server_port, filename, http_buf);
 
     /* Transfer the content from server to client */
-    Rio_writen(connfd, buf, strlen(buf));
+    Rio_writen(clientfd, http_buf, strlen(http_buf));
     return;
 }
 
@@ -99,7 +98,7 @@ void read_req_headers(rio_t *rp)
 
     Rio_readlineb(rp, header_buf, MAXLINE);
     printf("%s", header_buf);
-    while (!strcmp(header_buf, "\r\n")) {
+    while (strcmp(header_buf, "\r\n")) {
         Rio_readlineb(rp, header_buf, MAXLINE);
         printf("%s", header_buf);
     }
@@ -110,17 +109,18 @@ void parse_uri(char *uri, char *version, char *filename, int *server_port)
 {
     char *uri_ptr;
     char *http_uri = "http://";
+    char *http_version = "HTTP/1.0";
 
     /* Change http version to 1.0 */
-    if (strncmp(version, "HTTP/1.0"))
-        strncpy(version, "HTTP/1.0");
+    if (strncmp(version, http_version, strlen(http_version)))
+        strncpy(version, http_version, strlen(http_version));
     
     /* Parse the uri and get the corresponding filename */
     if ((uri = strstr(uri, http_uri)) == NULL) {
         fprintf(stderr, "This isn't a http uri.\n");
         return;
     }
-    uri += strlen(uri);
+    uri += strlen(http_uri);
 
     if ((uri_ptr = strstr(uri, ":")) == NULL) {
         // dedicated port not found, choose port 80
@@ -130,9 +130,9 @@ void parse_uri(char *uri, char *version, char *filename, int *server_port)
     } else {
         // use dedicated port number
         uri_ptr += 1;
-        sscanf(uri, "%d%s", server_port, filename);
+        sscanf(uri_ptr, "%d%s", server_port, filename);
     }
-    printf("Choosing server by port %d with file name : %s", 
+    printf("Choosing server by port %d with file name : %s\n\n", 
            *server_port, filename);
     return;
 }
@@ -147,8 +147,11 @@ void connect_server(int port_num, char *filename, char *buf)
     int clientfd = Open_clientfd("localhost", serv_port);
     sprintf(buf, "GET %s HTTP/1.0\r\n", filename);
     Rio_writen(clientfd, buf, strlen(buf));
-    sprintf(buf, "Host: localhost:%d", port_num);
+    sprintf(buf, "Host: localhost:%d\r\n", port_num);
     Rio_writen(clientfd, buf, strlen(buf));
+    sprintf(buf, "\r\n");
+    Rio_writen(clientfd, buf, strlen(buf));
+
     
     Rio_readinitb(&rio, clientfd);
     Rio_readnb(&rio, buf, MAXLINE);
