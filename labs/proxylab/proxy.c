@@ -28,7 +28,7 @@ void read_req_headers(rio_t *rp);
 /* Parse the client's uri */
 void parse_uri(char *uri, char *version, char *filename, int *server_port);
 /* Make connection to server and get http content */
-void connect_server(int port_num, char *filename, char *buf);
+void connect_server(int port_num, char *filename, char *buf, int clientfd);
 /* Check the url, modify the http version and return the server port number*/
 int check_url_port(http_req *req_struct);
 /* Concatenate http request string for actual server */
@@ -85,10 +85,10 @@ void parse_cli_req(int clientfd)
 
     /* Parse client uri */
     parse_uri(uri, version, filename, &server_port);
-    connect_server(server_port, filename, http_buf);
+    connect_server(server_port, filename, http_buf, clientfd);
 
     /* Transfer the content from server to client */
-    Rio_writen(clientfd, http_buf, strlen(http_buf));
+    // Rio_writen(clientfd, http_buf, strlen(http_buf));
     return;
 }
 
@@ -137,7 +137,7 @@ void parse_uri(char *uri, char *version, char *filename, int *server_port)
     return;
 }
 
-void connect_server(int port_num, char *filename, char *buf)
+void connect_server(int port_num, char *filename, char *buf, int clientfd)
 {
     char serv_port[16];
     // char buf[MAXLINE];
@@ -154,7 +154,10 @@ void connect_server(int port_num, char *filename, char *buf)
 
     
     Rio_readinitb(&rio, clientfd);
-    Rio_readnb(&rio, buf, MAXLINE);
+    while (Rio_readnb(&rio, buf, MAXLINE) > 0) {
+        Rio_writen(clientfd, buf, strlen(htbuftp_buf));
+    }
+    // Rio_readnb(&rio, buf, MAXLINE);
     printf("Received from server:\n%s", buf);
 
     // Disconnect the server
