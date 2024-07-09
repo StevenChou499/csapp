@@ -144,24 +144,27 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
     rio_t rio;
 
     sprintf(serv_port, "%d", port_num);
-    int clientfd = Open_clientfd("localhost", serv_port);
+    int serverfd = Open_clientfd("localhost", serv_port);
     sprintf(buf, "GET %s HTTP/1.0\r\n", filename);
-    Rio_writen(clientfd, buf, strlen(buf));
+    Rio_writen(serverfd, buf, strlen(buf));
     sprintf(buf, "Host: localhost:%d\r\n", port_num);
-    Rio_writen(clientfd, buf, strlen(buf));
+    Rio_writen(serverfd, buf, strlen(buf));
     sprintf(buf, "\r\n");
-    Rio_writen(clientfd, buf, strlen(buf));
+    Rio_writen(serverfd, buf, strlen(buf));
 
     
-    Rio_readinitb(&rio, clientfd);
+    Rio_readinitb(&rio, serverfd);
+    int total_size = 0;
     while (Rio_readnb(&rio, buf, MAXLINE) > 0) {
-        Rio_writen(clientfd, buf, strlen(htbuftp_buf));
+        Rio_writen(clientfd, buf, strlen(buf));
+        total_size += strlen(buf);
+        printf("%s", buf);
     }
     // Rio_readnb(&rio, buf, MAXLINE);
-    printf("Received from server:\n%s", buf);
+    printf("\n\nSending total size: %d bytes\n", total_size);
 
     // Disconnect the server
-    Close(clientfd);
+    Close(serverfd);
     return;
 }
 // void recv_client_req(char *listen_port)
