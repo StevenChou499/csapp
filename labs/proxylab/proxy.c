@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_t tid;
     
     // Receive connection from client
     listenfd = Open_listenfd(argv[1]);
@@ -51,8 +52,7 @@ int main(int argc, char *argv[])
         printf("Accepted connection from (%s, %s)\n", hostname, port);
 
         // parse client http request
-        parse_cli_req(connfd);
-
+        pthread_create(&tid, NULL, parse_cli_req, (void *)connfd);
     }
 
     return 0;
@@ -60,6 +60,7 @@ int main(int argc, char *argv[])
 
 void parse_cli_req(int clientfd)
 {
+    pthread_detach(pthread_self());
     char http_buf[MAXLINE], method[128], uri[MAXLINE], version[32];
     char filename[MAXLINE];
     int server_port;
