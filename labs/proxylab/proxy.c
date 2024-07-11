@@ -9,19 +9,24 @@
 #define MAX_OBJECT_SIZE 102400
 
 typedef struct {
-    char file_name[16];
+    char  file_name[16];
     char *file_start;
     char *file_end;
 } file_attr;
 
 typedef struct {
+    sem_t     cache_semaphore;
     file_attr cached_file[4];
-    char data_cache[MAX_CACHE_SIZE];
-}
+    char      data_cache[MAX_CACHE_SIZE];
+} proxy_cache;
+
+proxy_cache http_cache;
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
+/* Initialize http_cache and its semaphore */
+void http_cache_init(proxy_cache *cache);
 /* Parse the client request content */
 void parse_cli_req(int clientfd);
 /* Read all the http request headers */
@@ -30,6 +35,8 @@ void read_req_headers(rio_t *rp);
 void parse_uri(char *uri, char *version, char *filename, int *server_port);
 /* Make connection to server and get http content */
 void connect_server(int port_num, char *filename, char *buf, int clientfd);
+/* Add a recent file into the cache */
+void add_to_file_cache(char *filename, char *local, int file_size);
 
 int main(int argc, char *argv[])
 {
@@ -45,6 +52,8 @@ int main(int argc, char *argv[])
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     pthread_t tid;
+
+    http_cache_init(&http_cache);
     
     // Receive connection from client
     listenfd = Open_listenfd(argv[1]);
@@ -60,6 +69,17 @@ int main(int argc, char *argv[])
     }
 
     return 0;
+}
+
+void http_cache_init(proxy_cache *cache)
+{
+    // zeroing all the buffer and file names
+    memset(cache->cached_file, NULL, 4 * sizeof(file_attr));
+    memset(cache->data_cache, NULL, sizeof(char) * MAX_CACHE_SIZE);
+
+    // Initialize semaphore
+    sem_init(&cache->cache_semaphore, 0, 1);
+    return;
 }
 
 void parse_cli_req(int clientfd)
@@ -85,7 +105,12 @@ void parse_cli_req(int clientfd)
     /* Parse client uri */
     parse_uri(uri, version, filename, &server_port);
     // check if the requested file has been cached
-    connect_server(server_port, filename, http_buf, clientfd);
+    if (strcmp(http_cache.cached_file[0].file_name, filename) == 0) {
+        int sendlen = 0;
+        while (sendlen < http_cache.cached_file[0].)
+    }
+    else
+        connect_server(server_port, filename, http_buf, clientfd);
 
     Close(clientfd);
     return;
@@ -139,7 +164,8 @@ void parse_uri(char *uri, char *version, char *filename, int *server_port)
 void connect_server(int port_num, char *filename, char *buf, int clientfd)
 {
     char serv_port[16];
-    char local_cache[MAX_OBJECT_SIZE], cache_ptr = local_cache;
+    char local_cache[MAX_OBJECT_SIZE];
+    char *cache_ptr = local_cache;
     rio_t rio;
 
     sprintf(serv_port, "%d", port_num);
@@ -157,16 +183,25 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
     while ((recv_size = Rio_readnb(&rio, buf, MAXLINE)) > 0) {
         total_size += recv_size;
         if (total_size <= MAX_OBJECT_SIZE) {
-                memcpy(cache_ptr, buf, recv_size);
-                cache_ptr += recv_size;
+            memcpy(cache_ptr, buf, recv_size);
+            cache_ptr += recv_size;
         }
         Rio_writen(clientfd, buf, recv_size);
         printf("%s", buf);
     }
-    // Rio_readnb(&rio, buf, MAXLINE);
     printf("\n\nSending total size: %d bytes\n", total_size);
+    if (total_size <= MAX_OBJECT_SIZE)
+        add_to_file_cache(filename, local_cache, total_size);
 
     // Disconnect the server
     Close(serverfd);
     return;
+}
+
+void add_to_file_cache(char *filename, char *local, int file_size)
+{
+    P(&http_cache.cache_semaphore);
+    memcpy(http_cache.data_cache, local, file_size);
+    strncpy(http_cache.cached_file, filename, strlen(filename));
+    V(&http_cache.cache_semaphore);
 }
