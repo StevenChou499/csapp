@@ -9,11 +9,15 @@
 #define MAX_OBJECT_SIZE 102400
 
 typedef struct {
-    char http_method[16];
-    char http_url[256];
-    char http_version[16];
-    char http_req_header[MAXLINE];
-} http_req;
+    char file_name[16];
+    char *file_start;
+    char *file_end;
+} file_attr;
+
+typedef struct {
+    file_attr cached_file[4];
+    char data_cache[MAX_CACHE_SIZE];
+}
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
@@ -80,6 +84,7 @@ void parse_cli_req(int clientfd)
 
     /* Parse client uri */
     parse_uri(uri, version, filename, &server_port);
+    // check if the requested file has been cached
     connect_server(server_port, filename, http_buf, clientfd);
 
     Close(clientfd);
@@ -134,7 +139,7 @@ void parse_uri(char *uri, char *version, char *filename, int *server_port)
 void connect_server(int port_num, char *filename, char *buf, int clientfd)
 {
     char serv_port[16];
-    // char buf[MAXLINE];
+    char local_cache[MAX_OBJECT_SIZE], cache_ptr = local_cache;
     rio_t rio;
 
     sprintf(serv_port, "%d", port_num);
@@ -150,8 +155,12 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
     Rio_readinitb(&rio, serverfd);
     int recv_size = 0, total_size = 0;
     while ((recv_size = Rio_readnb(&rio, buf, MAXLINE)) > 0) {
-        Rio_writen(clientfd, buf, recv_size);
         total_size += recv_size;
+        if (total_size <= MAX_OBJECT_SIZE) {
+                memcpy(cache_ptr, buf, recv_size);
+                cache_ptr += recv_size;
+        }
+        Rio_writen(clientfd, buf, recv_size);
         printf("%s", buf);
     }
     // Rio_readnb(&rio, buf, MAXLINE);
