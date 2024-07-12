@@ -12,6 +12,7 @@ typedef struct {
     char  file_name[16];
     char *file_start;
     char *file_end;
+    int   file_size;
 } file_attr;
 
 typedef struct {
@@ -105,11 +106,16 @@ void parse_cli_req(int clientfd)
     /* Parse client uri */
     parse_uri(uri, version, filename, &server_port);
     // check if the requested file has been cached
-    if (strcmp(http_cache.cached_file[0].file_name, filename) == 0) {
-        int sendlen = 0;
-        while (sendlen < http_cache.cached_file[0].)
+    for (int i = 0; i < 4; i++) {
+        if (strcmp(http_cache.cached_file[0].file_name, filename) == 0) {
+            n = Rio_writen(clientfd, 
+                           http_cache.cached_file[0].file_start, 
+                           http_cache.cached_file[0].file_size);
+            Close(clientfd);
+            return;
+        }
     }
-    else
+    
         connect_server(server_port, filename, http_buf, clientfd);
 
     Close(clientfd);
