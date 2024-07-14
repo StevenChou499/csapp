@@ -10,14 +10,15 @@
 
 typedef struct {
     char  file_name[16];
-    char *file_start;
-    char *file_end;
+    // char *file_start;
+    // char *file_end;
+    int   file_cached;
     int   file_size;
 } file_attr;
 
 typedef struct {
     sem_t     cache_semaphore;
-    file_attr cached_file[4];
+    file_attr cached_file[10];
     char      data_cache[MAX_CACHE_SIZE];
 } proxy_cache;
 
@@ -106,17 +107,18 @@ void parse_cli_req(int clientfd)
     /* Parse client uri */
     parse_uri(uri, version, filename, &server_port);
     // check if the requested file has been cached
-    for (int i = 0; i < 4; i++) {
-        if (strcmp(http_cache.cached_file[0].file_name, filename) == 0) {
-            n = Rio_writen(clientfd, 
-                           http_cache.cached_file[0].file_start, 
-                           http_cache.cached_file[0].file_size);
+    for (int i = 0; i < 10; i++) {
+        if (strcmp(http_cache.cached_file[i].file_name, filename) == 0) { // file cached
+            printf("Getting file %s straight from cache...\n", filename);
+            printf("Cached file status : %d bytes\n", http_cache.cached_file[i].file_size);
+            Rio_writen(clientfd, 
+                       http_cache.data_cache + i * sizeof(char) * MAX_OBJECT_SIZE, 
+                       http_cache.cached_file[i].file_size);
             Close(clientfd);
             return;
         }
     }
-    
-        connect_server(server_port, filename, http_buf, clientfd);
+    connect_server(server_port, filename, http_buf, clientfd);
 
     Close(clientfd);
     return;
@@ -196,8 +198,10 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
         printf("%s", buf);
     }
     printf("\n\nSending total size: %d bytes\n", total_size);
-    if (total_size <= MAX_OBJECT_SIZE)
+    if (total_size <= MAX_OBJECT_SIZE) {
+        printf("Add file %s to cache...\n", filename);
         add_to_file_cache(filename, local_cache, total_size);
+    }
 
     // Disconnect the server
     Close(serverfd);
@@ -207,7 +211,15 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
 void add_to_file_cache(char *filename, char *local, int file_size)
 {
     P(&http_cache.cache_semaphore);
-    memcpy(http_cache.data_cache, local, file_size);
-    strncpy(http_cache.cached_file, filename, strlen(filename));
+    for (int i = 0; i < 10; i++) {
+        if (http_cache.cached_file[i].file_cached == 0) { // file not cached
+            printf("Add file %s to cache index %d\n", filename, i);
+            memcpy(http_cache.data_cache + i * sizeof(char) * MAX_OBJECT_SIZE, local, file_size);
+            strncpy(http_cache.cached_file[i].file_name, filename, strlen(filename));
+            http_cache.cached_file[i].file_size = file_size;
+            http_cache.cached_file[i].file_cached = 1;
+            break;
+        }
+    }
     V(&http_cache.cache_semaphore);
 }
