@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include "csapp.h"
 #include <netdb.h>
 #include <sys/socket.h>
@@ -112,10 +113,10 @@ void parse_cli_req(int clientfd)
     // check if the requested file has been cached
     for (int i = 0; i < 10; i++) {
         if (strcmp(http_cache.cached_file[i].file_name, filename) == 0) { // file cached
-            printf("Getting file %s straight from cache...\n", filename);
+            printf("Getting file %s straight from cache index %d...\n", filename, i);
             printf("Cached file status : %d bytes\n", http_cache.cached_file[i].file_size);
             Rio_writen(clientfd, 
-                       &http_cache.cached_file[i].file_start, 
+                       http_cache.cached_file[i].file_start, 
                        http_cache.cached_file[i].file_size);
             Close(clientfd);
             return;
@@ -213,7 +214,7 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
 void add_to_file_cache(char *filename, char *local, int file_size)
 {
     P(&http_cache.cache_semaphore);
-    bool cached = False;
+    bool cached = false;
     for (int i = 0; i < 10; i++) {
         if (http_cache.cached_file[i].file_cached == 0) { // file not cached
             printf("Add file %s to cache index %d\n", filename, i);
@@ -221,16 +222,17 @@ void add_to_file_cache(char *filename, char *local, int file_size)
             strncpy(http_cache.cached_file[i].file_name, filename, strlen(filename));
             http_cache.cached_file[i].file_size = file_size;
             http_cache.cached_file[i].file_cached = 1;
-            cached = True;
+            cached = true;
             break;
         }
     }
     int v_i = http_cache.victim_file;
-    if (cached == False) { // all index are used, choose a victim
+    if (cached == false) { // all index are used, choose a victim
         memcpy(http_cache.cached_file[v_i].file_start, local, file_size);
-        strncpy(http_cache.cahed_file[v_i].file_name, filename, strlen(filename));
-        http_cahce.cached_file[v_i].file_size = file_size;
+        strncpy(http_cache.cached_file[v_i].file_name, filename, strlen(filename));
+        http_cache.cached_file[v_i].file_size = file_size;
         http_cache.cached_file[v_i].file_cached = 1;
+        http_cache.victim_file = (v_i + 1) % 10;
     }
     V(&http_cache.cache_semaphore);
     return;
