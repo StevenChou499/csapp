@@ -10,8 +10,7 @@
 
 typedef struct {
     char  file_name[16];
-    // char *file_start;
-    // char *file_end;
+    char *file_start;
     int   file_cached;
     int   file_size;
 } file_attr;
@@ -19,6 +18,7 @@ typedef struct {
 typedef struct {
     sem_t     cache_semaphore;
     file_attr cached_file[10];
+    int       victim_file;
     char      data_cache[MAX_CACHE_SIZE];
 } proxy_cache;
 
@@ -69,7 +69,6 @@ int main(int argc, char *argv[])
         // parse client http request
         pthread_create(&tid, NULL, parse_cli_req, (void *)connfd);
     }
-
     return 0;
 }
 
@@ -78,6 +77,10 @@ void http_cache_init(proxy_cache *cache)
     // zeroing all the buffer and file names
     memset(cache->cached_file, NULL, 4 * sizeof(file_attr));
     memset(cache->data_cache, NULL, sizeof(char) * MAX_CACHE_SIZE);
+    cache->victim_file = 0;
+    for (int i = 0; i < 10; i++) {
+        cache->cached_file[i].file_start = &cache->data_cache[i * MAX_OBJECT_SIZE];
+    }
 
     // Initialize semaphore
     sem_init(&cache->cache_semaphore, 0, 1);
@@ -112,7 +115,7 @@ void parse_cli_req(int clientfd)
             printf("Getting file %s straight from cache...\n", filename);
             printf("Cached file status : %d bytes\n", http_cache.cached_file[i].file_size);
             Rio_writen(clientfd, 
-                       http_cache.data_cache + i * sizeof(char) * MAX_OBJECT_SIZE, 
+                       &http_cache.cached_file[i].file_start, 
                        http_cache.cached_file[i].file_size);
             Close(clientfd);
             return;
@@ -184,7 +187,6 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
     Rio_writen(serverfd, buf, strlen(buf));
     sprintf(buf, "\r\n");
     Rio_writen(serverfd, buf, strlen(buf));
-
     
     Rio_readinitb(&rio, serverfd);
     int recv_size = 0, total_size = 0;
@@ -211,15 +213,25 @@ void connect_server(int port_num, char *filename, char *buf, int clientfd)
 void add_to_file_cache(char *filename, char *local, int file_size)
 {
     P(&http_cache.cache_semaphore);
+    bool cached = False;
     for (int i = 0; i < 10; i++) {
         if (http_cache.cached_file[i].file_cached == 0) { // file not cached
             printf("Add file %s to cache index %d\n", filename, i);
-            memcpy(http_cache.data_cache + i * sizeof(char) * MAX_OBJECT_SIZE, local, file_size);
+            memcpy(http_cache.cached_file[i].file_start, local, file_size);
             strncpy(http_cache.cached_file[i].file_name, filename, strlen(filename));
             http_cache.cached_file[i].file_size = file_size;
             http_cache.cached_file[i].file_cached = 1;
+            cached = True;
             break;
         }
     }
+    int v_i = http_cache.victim_file;
+    if (cached == False) { // all index are used, choose a victim
+        memcpy(http_cache.cached_file[v_i].file_start, local, file_size);
+        strncpy(http_cache.cahed_file[v_i].file_name, filename, strlen(filename));
+        http_cahce.cached_file[v_i].file_size = file_size;
+        http_cache.cached_file[v_i].file_cached = 1;
+    }
     V(&http_cache.cache_semaphore);
+    return;
 }
